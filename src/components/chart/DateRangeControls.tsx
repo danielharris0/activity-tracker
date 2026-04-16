@@ -7,6 +7,12 @@ const DATE_PRESETS: Array<{ value: DatePreset; label: string }> = [
   { value: 'all', label: 'All' },
 ];
 
+const DAY_MS = 86_400_000;
+
+function msToDateStr(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 export function DateRangeControls() {
   const {
     datePreset,
@@ -34,9 +40,12 @@ export function DateRangeControls() {
         ))}
         <button
           onClick={() => {
-            const end = new Date().toISOString().slice(0, 10);
-            const start = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-            setCustomDateRange(customDateRange?.start ?? start, customDateRange?.end ?? end);
+            const endMs = Date.now();
+            const startMs = endMs - 30 * DAY_MS;
+            setCustomDateRange(
+              msToDateStr(customDateRange?.startMs ?? startMs),
+              msToDateStr(customDateRange ? customDateRange.endMs - DAY_MS : endMs),
+            );
           }}
           className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
             datePreset === 'custom'
@@ -52,15 +61,19 @@ export function DateRangeControls() {
         <div className="flex items-center gap-2">
           <input
             type="date"
-            value={customDateRange.start}
-            onChange={(e) => setCustomDateRange(e.target.value, customDateRange.end)}
+            value={msToDateStr(customDateRange.startMs)}
+            onChange={(e) =>
+              setCustomDateRange(e.target.value, msToDateStr(customDateRange.endMs - DAY_MS))
+            }
             className="px-2 py-1 border border-gray-300 rounded text-xs"
           />
           <span className="text-xs text-gray-500">to</span>
           <input
             type="date"
-            value={customDateRange.end}
-            onChange={(e) => setCustomDateRange(customDateRange.start, e.target.value)}
+            value={msToDateStr(customDateRange.endMs - DAY_MS)}
+            onChange={(e) =>
+              setCustomDateRange(msToDateStr(customDateRange.startMs), e.target.value)
+            }
             className="px-2 py-1 border border-gray-300 rounded text-xs"
           />
         </div>

@@ -1,6 +1,7 @@
 import type { LogEntry } from '../types/activity';
 import type { BayesianEstimate, BayesianParams, BayesianDebugData, MarginalEntry, MissingBestOfHandling } from '../types/statistics';
 import { logNormalPdf, logNormalCdf } from './normal';
+import { makeRange, uniformSamples } from './timeRange';
 
 export interface Observation {
   timestamp: number;
@@ -119,44 +120,51 @@ const SIGMA_GRID_SIZE = 50;
 const MAX_EVAL_POINTS = 300;
 
 const TARGET_FILL_COUNT = 100;
-const HOUR_MS = 3_600_000;
 
 /**
- * Generate evaluation timestamps: every observation timestamp plus evenly-spaced
- * fill-in points in gaps (scaled to the total range). Fill-in points that fall
- * too close to an observation are omitted.
+ * Generate evaluation timestamps: evenly-spaced fill-in points across the given
+ * window, plus any observation timestamps inside the window. Fill density scales
+ * with the window span (giving consistent visual resolution at any zoom level).
+ * Fill-in points that fall too close to an observation are omitted.
+ *
+ * If `window` is omitted, falls back to the observations' own range.
  */
-export function generateEvalTimestamps(observations: Observation[]): number[] {
-  if (observations.length === 0) return [];
+export function generateEvalTimestamps(
+  observations: Observation[],
+  window?: { startMs: number; endMs: number },
+): number[] {
+  let rangeStart: number;
+  let rangeEnd: number;
+  if (window) {
+    rangeStart = window.startMs;
+    rangeEnd = window.endMs;
+  } else {
+    if (observations.length === 0) return [];
+    rangeStart = observations[0].timestamp;
+    rangeEnd = observations[observations.length - 1].timestamp;
+  }
 
-  // Deduplicated observation timestamps (already sorted)
+  if (rangeEnd === rangeStart) return [rangeStart];
+  if (rangeEnd < rangeStart) return [];
+
+  // Observation timestamps within the window, deduped (observations are sorted).
   const obsTimes: number[] = [];
   for (const obs of observations) {
+    if (obs.timestamp < rangeStart || obs.timestamp > rangeEnd) continue;
     if (obsTimes.length === 0 || obsTimes[obsTimes.length - 1] !== obs.timestamp) {
       obsTimes.push(obs.timestamp);
     }
   }
 
-  const first = obsTimes[0];
-  const last = obsTimes[obsTimes.length - 1];
-  const range = last - first;
-
-  if (range === 0) return [first];
-
-  // Fill-in step scaled to range, with a floor of 1 hour
-  const fillStep = Math.max(HOUR_MS, range / TARGET_FILL_COUNT);
+  const range = makeRange(rangeStart, rangeEnd);
+  const fillStep = range.span / TARGET_FILL_COUNT;
   const minDist = fillStep / 2;
 
-  // Build a set of observation timestamps for fast proximity checks
   const obsSet = new Set(obsTimes);
 
-  // Generate fill-in candidates and skip those too close to an observation
   const fillTimestamps: number[] = [];
-  const fillCount = Math.floor(range / fillStep);
-  for (let i = 0; i <= fillCount; i++) {
-    const t = first + i * fillStep;
+  for (const t of uniformSamples(range, TARGET_FILL_COUNT)) {
     if (obsSet.has(t)) continue;
-    // Check proximity to nearest observation via linear scan (observations are sorted)
     let tooClose = false;
     for (let j = 0; j < obsTimes.length; j++) {
       if (Math.abs(obsTimes[j] - t) < minDist) { tooClose = true; break; }

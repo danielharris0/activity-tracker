@@ -7,6 +7,7 @@ import { prepareObservations, computeBayesianEstimates, generateEvalTimestamps, 
 interface CacheEntry {
   entriesRef: LogEntry[];
   paramsKey: string;
+  windowKey: string;
   estimates: BayesianEstimate[];
 }
 
@@ -14,22 +15,38 @@ function paramsToKey(params: BayesianParams, typicalAttemptDuration: number | un
   return `${params.kernelStdDevDays}|${params.cutoffThresholdPct}|${params.missingBestOf}|${typicalAttemptDuration ?? ''}`;
 }
 
+// Note: because `window` is part of the cache key, panning (which commits a
+// new window) triggers a full re-run of prepareObservations, eval-timestamp
+// generation, and the Bayesian posterior grid. The observations themselves
+// don't change across pans — only the eval timestamps move — so this is
+// wasted work, but acceptable for typical log counts (kernel cutoff keeps the
+// per-eval-point cost bounded to nearby observations). Revisit if pan feels
+// laggy on large datasets.
+//
+// Eval timestamps are generated over an overscan region (EVAL_OVERSCAN of the
+// window span on each side) so that a drag-in-progress has pre-computed
+// estimates to render as the visible range shifts into the overscan margin,
+// up until the next commit.
+const EVAL_OVERSCAN = 0.5;
+
 export function useChartData(
   entries: LogEntry[],
   activity: Activity,
   enabledLayers: Set<ChartLayerType>,
   params: BayesianParams,
+  window: { startMs: number; endMs: number },
 ): BayesianChartPoint[] {
   const cacheRef = useRef<CacheEntry | null>(null);
 
   const estimates = useMemo(() => {
     const key = paramsToKey(params, activity.typicalAttemptDuration);
+    const windowKey = `${window.startMs}|${window.endMs}`;
 
-    // Return cached estimates if inputs haven't changed
     if (
       cacheRef.current &&
       cacheRef.current.entriesRef === entries &&
-      cacheRef.current.paramsKey === key
+      cacheRef.current.paramsKey === key &&
+      cacheRef.current.windowKey === windowKey
     ) {
       return cacheRef.current.estimates;
     }
@@ -40,12 +57,17 @@ export function useChartData(
       params.missingBestOf,
     );
 
-    const evalTimestamps = generateEvalTimestamps(observations);
+    const span = window.endMs - window.startMs;
+    const overscan = span * EVAL_OVERSCAN;
+    const evalTimestamps = generateEvalTimestamps(observations, {
+      startMs: window.startMs - overscan,
+      endMs: window.endMs + overscan,
+    });
     const result = computeBayesianEstimates(observations, params, evalTimestamps);
 
-    cacheRef.current = { entriesRef: entries, paramsKey: key, estimates: result };
+    cacheRef.current = { entriesRef: entries, paramsKey: key, windowKey, estimates: result };
     return result;
-  }, [entries, activity.typicalAttemptDuration, params]);
+  }, [entries, activity.typicalAttemptDuration, params, window.startMs, window.endMs]);
 
   const chartData = useMemo(() => {
     if (entries.length === 0) return [];

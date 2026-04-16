@@ -6,6 +6,12 @@ import {
   computeKernelAtPoint,
   computeKernelWeight,
 } from '../../lib/bayesian';
+import {
+  makeRange,
+  visibleRangeFromScale,
+  intersectRanges,
+  uniformSamples,
+} from '../../lib/timeRange';
 
 interface KernelOverlayProps {
   hoveredTimestamp: number;
@@ -47,16 +53,18 @@ export function KernelOverlay({
   const tStart = hoveredTimestamp - cutoffDist;
   const tEnd = hoveredTimestamp + cutoffDist;
 
-  // Build Gaussian curve path, clipped to visible chart area
-  const pathPoints: [number, number][] = [];
-  for (let i = 0; i <= CURVE_POINTS; i++) {
-    const t = tStart + (tEnd - tStart) * (i / CURVE_POINTS);
-    const px = xScale(t);
-    if (px < 0 || px > innerWidth) continue;
+  // Sample within the intersection of kernel support and the visible x-range,
+  // so zooming in below the kernel width still yields a smooth curve.
+  const sampleRange = intersectRanges(
+    makeRange(tStart, tEnd),
+    visibleRangeFromScale(xScale, innerWidth),
+  );
+  if (!sampleRange) return null;
 
+  const pathPoints: [number, number][] = uniformSamples(sampleRange, CURVE_POINTS).map((t) => {
     const weight = computeKernelWeight(t - hoveredTimestamp, variance);
-    pathPoints.push([px, innerHeight - weight * curveMaxHeight]);
-  }
+    return [xScale(t), innerHeight - weight * curveMaxHeight];
+  });
 
   if (pathPoints.length < 2) return null;
 

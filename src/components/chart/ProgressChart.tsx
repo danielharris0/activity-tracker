@@ -21,7 +21,7 @@ import { prepareObservations, computeBayesianDebugAtTimestamp } from '../../lib/
 import type { LogEntry, Activity } from '../../types/activity';
 import type { BayesianChartPoint } from '../../types/chart';
 import { formatDuration } from '../../lib/duration';
-import { useMemo, useState, useCallback, useRef } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 
 interface ProgressChartProps {
   logs: LogEntry[];
@@ -41,26 +41,30 @@ export function ProgressChart({ logs, activityId, activity }: ProgressChartProps
     missingBestOf,
   } = useChartConfigStore();
 
-  // Filter logs by date range
-  const filteredLogs = useMemo(() => {
-    if (datePreset === 'all') return logs;
-
-    let startDate: Date;
-    const endDate = new Date();
-
+  // Committed view window. Always defined; drives both filtering and (when no
+  // drag is active) the x-axis domain. Never changes mid-drag.
+  const baseWindow = useMemo<{ startMs: number; endMs: number }>(() => {
     if (datePreset === 'custom' && customDateRange) {
-      startDate = new Date(customDateRange.start);
-      endDate.setTime(new Date(customDateRange.end).getTime() + 86400000);
-    } else {
-      const days = datePreset === '7d' ? 7 : datePreset === '30d' ? 30 : 90;
-      startDate = new Date(Date.now() - days * 86400000);
+      return { startMs: customDateRange.startMs, endMs: customDateRange.endMs };
     }
-
-    return logs.filter((log) => {
-      const logDate = new Date(log.date);
-      return logDate >= startDate && logDate <= endDate;
-    });
-  }, [logs, datePreset, customDateRange]);
+    if (datePreset !== 'all') {
+      const days = datePreset === '7d' ? 7 : datePreset === '30d' ? 30 : 90;
+      const endMs = Date.now();
+      return { startMs: endMs - days * 86_400_000, endMs };
+    }
+    if (logs.length === 0) {
+      const now = Date.now();
+      return { startMs: now - 30 * 86_400_000, endMs: now };
+    }
+    let min = Infinity;
+    let max = -Infinity;
+    for (const log of logs) {
+      const ts = new Date(`${log.date}T${log.time || '00:00'}`).getTime();
+      if (ts < min) min = ts;
+      if (ts > max) max = ts;
+    }
+    return { startMs: min, endMs: max + 1 };
+  }, [datePreset, customDateRange, logs]);
 
   const params = useMemo(() => ({
     kernelStdDevDays,
@@ -68,15 +72,17 @@ export function ProgressChart({ logs, activityId, activity }: ProgressChartProps
     missingBestOf,
   }), [kernelStdDevDays, cutoffThresholdPct, missingBestOf]);
 
-  // Entries visible as raw points (filtered by missingBestOf)
+  // All logs are kept for the Bayesian computation so that panning the view
+  // never changes which observations contribute to the estimate. The window
+  // only scopes where eval timestamps are generated.
   const rawEntries = useMemo(() => {
     if (missingBestOf === 'exclude') {
-      return filteredLogs.filter(e => e.bestOf != null);
+      return logs.filter(e => e.bestOf != null);
     }
-    return filteredLogs;
-  }, [filteredLogs, missingBestOf]);
+    return logs;
+  }, [logs, missingBestOf]);
 
-  const chartData = useChartData(rawEntries, activity, enabledLayers, params);
+  const chartData = useChartData(rawEntries, activity, enabledLayers, params, baseWindow);
 
   const showDebugTable = useChartConfigStore(s => s.showDebugTable);
   const toggleDebugTable = useChartConfigStore(s => s.toggleDebugTable);
@@ -94,7 +100,7 @@ export function ProgressChart({ logs, activityId, activity }: ProgressChartProps
     <div className="space-y-4">
       <ChartControls />
 
-      {chartData.length === 0 ? (
+      {logs.length === 0 ? (
         <div className="h-64 flex items-center justify-center text-sm text-gray-400">
           No data to display. Log some entries to see the chart.
         </div>
@@ -110,6 +116,7 @@ export function ProgressChart({ logs, activityId, activity }: ProgressChartProps
               enabledLayers={enabledLayers}
               kernelStdDevDays={kernelStdDevDays}
               cutoffThresholdPct={cutoffThresholdPct}
+              baseWindow={baseWindow}
               onSelectTimestamp={showDebugTable ? setDebugTimestamp : undefined}
             />
           )}
@@ -158,6 +165,7 @@ interface ProgressChartInnerProps {
   enabledLayers: Set<string>;
   kernelStdDevDays: number;
   cutoffThresholdPct: number;
+  baseWindow: { startMs: number; endMs: number };
   onSelectTimestamp?: (ts: number) => void;
 }
 
@@ -170,6 +178,7 @@ function ProgressChartInner({
   enabledLayers,
   kernelStdDevDays,
   cutoffThresholdPct,
+  baseWindow,
   onSelectTimestamp,
 }: ProgressChartInnerProps) {
   const innerWidth = width - margin.left - margin.right;
@@ -181,46 +190,49 @@ function ProgressChartInner({
   const showDebug = useChartConfigStore(s => s.showDebugTable);
   const showKernel = showDebug && (enabledLayers.has('estimated-mean') || enabledLayers.has('estimated-stddev'));
 
-  // Pan-by-drag state (local during drag, committed on mouseup)
-  const [panOffset, setPanOffset] = useState(0); // ms offset applied during drag
-  const dragRef = useRef<{ startX: number; domainAtStart: [number, number] } | null>(null);
-  const isDragging = dragRef.current != null && panOffset !== 0;
+  // Drag state: `dragWindow` is the transient window shown during a drag (null
+  // when no drag is in progress). `dragStart` snapshots the mouse position and
+  // the window at mouseDown, so mouseMove can compute the new window as a pure
+  // function of the pixel delta from start. This keeps the drag decoupled
+  // from any re-renders of `baseWindow`/`chartData`.
+  const [dragWindow, setDragWindow] = useState<{ startMs: number; endMs: number } | null>(null);
+  const dragStart = useRef<{
+    pxStart: number;
+    windowAtStart: { startMs: number; endMs: number };
+  } | null>(null);
+
+  const viewWindow = dragWindow ?? baseWindow;
 
   const { showTooltip, hideTooltip, tooltipData, tooltipLeft, tooltipTop, tooltipOpen } =
     useTooltip<NearestPoints>();
 
-  // Build scales
-  const dataDomain = useMemo(() => {
-    const timestamps = chartData.map(d => d.timestamp);
-    return [Math.min(...timestamps), Math.max(...timestamps)] as [number, number];
-  }, [chartData]);
-
   const xScale = useMemo(() => {
     return scaleLinear<number>({
-      domain: [dataDomain[0] + panOffset, dataDomain[1] + panOffset],
+      domain: [viewWindow.startMs, viewWindow.endMs],
       range: [0, innerWidth],
     });
-  }, [dataDomain, panOffset, innerWidth]);
+  }, [viewWindow.startMs, viewWindow.endMs, innerWidth]);
 
+  // Y-scale derived from the raw logs only (not chartData), so it stays
+  // stable across pans and zooms. Mean/stddev/CI may occasionally extend
+  // beyond this range and clip at the edges — acceptable tradeoff to avoid
+  // the whole chart jumping when eval timestamps shift.
   const yScale = useMemo(() => {
-    const values: number[] = [];
-    for (const d of chartData) {
-      if (d.raw != null) values.push(d.raw);
-      if (d.mean != null) values.push(d.mean);
-      if (d.stddev != null) values.push(d.stddev);
-      if (d.ciLower != null) values.push(d.ciLower);
-      if (d.ciUpper != null) values.push(d.ciUpper);
+    if (rawEntries.length === 0) {
+      return scaleLinear<number>({ domain: [0, 1], range: [innerHeight, 0] });
     }
-    if (values.length === 0) return scaleLinear<number>({ domain: [0, 1], range: [innerHeight, 0] });
-
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const padding = (max - min) * 0.05 || 1;
+    let min = Infinity;
+    let max = -Infinity;
+    for (const e of rawEntries) {
+      if (e.value < min) min = e.value;
+      if (e.value > max) max = e.value;
+    }
+    const padding = (max - min) * 0.15 || 1;
     return scaleLinear<number>({
       domain: [Math.max(0, min - padding), max + padding],
       range: [innerHeight, 0],
     });
-  }, [chartData, innerHeight]);
+  }, [rawEntries, innerHeight]);
 
   const DAY_MS = 86_400_000;
   const xTickFormat = useMemo(() => {
@@ -263,11 +275,11 @@ function ProgressChartInner({
   const handleMouseDown = useCallback((event: React.MouseEvent<SVGRectElement>) => {
     const point = localPoint(event);
     if (!point) return;
-    dragRef.current = {
-      startX: point.x - margin.left,
-      domainAtStart: [dataDomain[0] + panOffset, dataDomain[1] + panOffset],
+    dragStart.current = {
+      pxStart: point.x - margin.left,
+      windowAtStart: viewWindow,
     };
-  }, [dataDomain, panOffset]);
+  }, [viewWindow]);
 
   const handleMouseMove = useCallback((event: React.MouseEvent<SVGRectElement>) => {
     const point = localPoint(event);
@@ -276,19 +288,16 @@ function ProgressChartInner({
     const x = point.x - margin.left;
     if (x < 0 || x > innerWidth) return;
 
-    // If dragging, pan the view
-    if (dragRef.current) {
-      const pxDelta = x - dragRef.current.startX;
+    if (dragStart.current) {
+      const pxDelta = x - dragStart.current.pxStart;
       if (Math.abs(pxDelta) > CLICK_THRESHOLD_PX) {
-        const domain = dragRef.current.domainAtStart;
-        const msPerPx = (domain[1] - domain[0]) / innerWidth;
-        const msOffset = -pxDelta * msPerPx;
-        setPanOffset(msOffset + (dragRef.current.domainAtStart[0] - dataDomain[0]));
+        const w = dragStart.current.windowAtStart;
+        const msShift = -pxDelta * (w.endMs - w.startMs) / innerWidth;
+        setDragWindow({ startMs: w.startMs + msShift, endMs: w.endMs + msShift });
       }
       return;
     }
 
-    // Otherwise, show tooltip
     const cursorTimestamp = xScale.invert(x);
     const nearest = findNearestPerSeries(cursorTimestamp, chartData);
 
@@ -301,22 +310,19 @@ function ProgressChartInner({
     if (showKernel && nearest.raw) {
       setHoveredTimestamp(nearest.raw.timestamp);
     }
-  }, [xScale, chartData, innerWidth, showTooltip, showKernel, dataDomain]);
+  }, [xScale, chartData, innerWidth, showTooltip, showKernel]);
 
-  const commitPan = useCallback(() => {
-    if (panOffset !== 0) {
-      setCustomDateRangeFromTimestamps(
-        dataDomain[0] + panOffset,
-        dataDomain[1] + panOffset,
-      );
-      setPanOffset(0);
+  const commitDrag = useCallback(() => {
+    if (dragWindow) {
+      setCustomDateRangeFromTimestamps(dragWindow.startMs, dragWindow.endMs);
+      setDragWindow(null);
     }
-    dragRef.current = null;
-  }, [panOffset, dataDomain, setCustomDateRangeFromTimestamps]);
+    dragStart.current = null;
+  }, [dragWindow, setCustomDateRangeFromTimestamps]);
 
   const handleMouseUp = useCallback((event: React.MouseEvent<SVGRectElement>) => {
-    // Detect click (no significant drag movement)
-    if (dragRef.current && Math.abs(panOffset) < 1) {
+    // Click (no significant drag): forward to onSelectTimestamp
+    if (dragStart.current && !dragWindow) {
       const point = localPoint(event);
       if (point && onSelectTimestamp) {
         const x = point.x - margin.left;
@@ -329,20 +335,65 @@ function ProgressChartInner({
         }
       }
     }
-    commitPan();
-  }, [commitPan, panOffset, xScale, chartData, innerWidth, onSelectTimestamp]);
+    commitDrag();
+  }, [commitDrag, dragWindow, xScale, chartData, innerWidth, onSelectTimestamp]);
 
   const handleMouseLeave = useCallback(() => {
-    commitPan();
+    commitDrag();
     hideTooltip();
     setHoveredTimestamp(null);
-  }, [hideTooltip, commitPan]);
+  }, [hideTooltip, commitDrag]);
+
+  // Wheel-to-zoom: attached to the SVG root as a native non-passive listener
+  // (React's onWheel is delegated through a passive root listener in modern
+  // browsers, which makes preventDefault a no-op and makes reliable wheel
+  // capture flaky on nested SVG elements like <rect>). Refs keep the handler
+  // stable across view-window updates so we don't re-bind on every render.
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const viewWindowRef = useRef(viewWindow);
+  viewWindowRef.current = viewWindow;
+  const xScaleRef = useRef(xScale);
+  xScaleRef.current = xScale;
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const ZOOM_SENSITIVITY = 0.001;
+    const handleWheel = (event: WheelEvent) => {
+      if (dragStart.current) return;
+      event.preventDefault();
+      const svgRect = svg.getBoundingClientRect();
+      const x = event.clientX - svgRect.left - margin.left;
+      if (x < 0 || x > innerWidth) return;
+
+      const vw = viewWindowRef.current;
+      const xs = xScaleRef.current;
+      const cursorMs = xs.invert(x);
+      const span = vw.endMs - vw.startMs;
+      const zoomFactor = Math.exp(event.deltaY * ZOOM_SENSITIVITY);
+      const newSpan = span * zoomFactor;
+      const fracFromStart = (cursorMs - vw.startMs) / span;
+      const newStart = cursorMs - fracFromStart * newSpan;
+      const newEnd = cursorMs + (1 - fracFromStart) * newSpan;
+
+      setCustomDateRangeFromTimestamps(newStart, newEnd);
+    };
+    svg.addEventListener('wheel', handleWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', handleWheel);
+  }, [innerWidth, setCustomDateRangeFromTimestamps]);
 
   if (innerWidth <= 0 || innerHeight <= 0) return null;
 
+  const clipId = `chart-clip-${innerWidth}-${innerHeight}`;
+
   return (
     <div style={{ position: 'relative' }}>
-      <svg width={width} height={height}>
+      <svg ref={svgRef} width={width} height={height}>
+        <defs>
+          <clipPath id={clipId}>
+            <rect x={0} y={0} width={innerWidth} height={innerHeight} />
+          </clipPath>
+        </defs>
         <Group left={margin.left} top={margin.top}>
           {/* Grid */}
           <GridRows
@@ -358,81 +409,85 @@ function ProgressChartInner({
             strokeDasharray="3 3"
           />
 
-          {/* CI band — upper area filled, lower area white to cut out */}
-          {enabledLayers.has('confidence-band') && ciUpperPoints.length > 0 && (
-            <>
-              <AreaClosed
-                data={ciUpperPoints}
-                x={d => xScale(d.timestamp)}
-                y={d => yScale(d.ciUpper!)}
-                yScale={yScale}
-                curve={curveMonotoneX}
-                fill={CHART_COLORS['confidence-band']}
-                fillOpacity={0.12}
-                stroke="none"
-              />
-              {ciLowerPoints.length > 0 && (
+          {/* Data content — clipped to the chart area so lines/dots outside
+              the current view window never bleed into the axes. */}
+          <g clipPath={`url(#${clipId})`}>
+            {/* CI band — upper area filled, lower area white to cut out */}
+            {enabledLayers.has('confidence-band') && ciUpperPoints.length > 0 && (
+              <>
                 <AreaClosed
-                  data={ciLowerPoints}
+                  data={ciUpperPoints}
                   x={d => xScale(d.timestamp)}
-                  y={d => yScale(d.ciLower!)}
+                  y={d => yScale(d.ciUpper!)}
                   yScale={yScale}
                   curve={curveMonotoneX}
-                  fill="#ffffff"
-                  fillOpacity={1}
+                  fill={CHART_COLORS['confidence-band']}
+                  fillOpacity={0.12}
                   stroke="none"
                 />
-              )}
-            </>
-          )}
+                {ciLowerPoints.length > 0 && (
+                  <AreaClosed
+                    data={ciLowerPoints}
+                    x={d => xScale(d.timestamp)}
+                    y={d => yScale(d.ciLower!)}
+                    yScale={yScale}
+                    curve={curveMonotoneX}
+                    fill="#ffffff"
+                    fillOpacity={1}
+                    stroke="none"
+                  />
+                )}
+              </>
+            )}
 
-          {/* Estimated mean line */}
-          {meanPoints.length > 0 && (
-            <LinePath
-              data={meanPoints}
-              x={d => xScale(d.timestamp)}
-              y={d => yScale(d.mean!)}
-              curve={curveMonotoneX}
-              stroke={CHART_COLORS['estimated-mean']}
-              strokeWidth={2}
-            />
-          )}
+            {/* Estimated mean line */}
+            {meanPoints.length > 0 && (
+              <LinePath
+                data={meanPoints}
+                x={d => xScale(d.timestamp)}
+                y={d => yScale(d.mean!)}
+                curve={curveMonotoneX}
+                stroke={CHART_COLORS['estimated-mean']}
+                strokeWidth={2}
+              />
+            )}
 
-          {/* Estimated stddev line */}
-          {stddevPoints.length > 0 && (
-            <LinePath
-              data={stddevPoints}
-              x={d => xScale(d.timestamp)}
-              y={d => yScale(d.stddev!)}
-              curve={curveMonotoneX}
-              stroke={CHART_COLORS['estimated-stddev']}
-              strokeWidth={1.5}
-              strokeDasharray="5 5"
-            />
-          )}
+            {/* Estimated stddev line */}
+            {stddevPoints.length > 0 && (
+              <LinePath
+                data={stddevPoints}
+                x={d => xScale(d.timestamp)}
+                y={d => yScale(d.stddev!)}
+                curve={curveMonotoneX}
+                stroke={CHART_COLORS['estimated-stddev']}
+                strokeWidth={1.5}
+                strokeDasharray="5 5"
+              />
+            )}
 
-          {/* Raw data line */}
-          {rawPoints.length > 0 && (
-            <LinePath
-              data={rawPoints}
-              x={d => xScale(d.timestamp)}
-              y={d => yScale(d.raw!)}
-              curve={curveMonotoneX}
-              stroke={CHART_COLORS.raw}
-              strokeWidth={1.5}
-            />
-          )}
+            {/* Raw data line */}
+            {rawPoints.length > 0 && (
+              <LinePath
+                data={rawPoints}
+                x={d => xScale(d.timestamp)}
+                y={d => yScale(d.raw!)}
+                curve={curveMonotoneX}
+                stroke={CHART_COLORS.raw}
+                strokeWidth={1.5}
+              />
+            )}
 
-          {/* Raw data dots */}
-          {rawPoints.map(d => (
-            <circle
-              key={d.timestamp}
-              cx={xScale(d.timestamp)}
-              cy={yScale(d.raw!)}
-              r={3}
-              fill={CHART_COLORS.raw}
-            />
-          ))}
+            {/* Raw data dots */}
+            {rawPoints.map(d => (
+              <circle
+                key={d.timestamp}
+                cx={xScale(d.timestamp)}
+                cy={yScale(d.raw!)}
+                r={3}
+                fill={CHART_COLORS.raw}
+              />
+            ))}
+          </g>
 
           {/* Kernel overlay */}
           {showKernel && hoveredTimestamp != null && (
@@ -486,7 +541,7 @@ function ProgressChartInner({
             width={innerWidth}
             height={innerHeight}
             fill="transparent"
-            style={{ cursor: dragRef.current ? 'grabbing' : 'grab' }}
+            style={{ cursor: dragWindow ? 'grabbing' : 'grab' }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
