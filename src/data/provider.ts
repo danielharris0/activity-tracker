@@ -11,5 +11,4 @@ export interface DataProvider {
     data: Omit<LogEntry, 'id' | 'createdAt'>,
     measurementType: MeasurementType
   ): Promise<LogEntry>;
-  deleteProgressLog(id: string): Promise<void>;
 }

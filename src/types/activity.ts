@@ -2,7 +2,7 @@ export type MeasurementType = 'count' | 'duration';
 
 export type BestOfData =
   | { type: 'attempts'; count: number }
-  | { type: 'duration'; seconds: number };
+  | { type: 'duration'; seconds: number; typicalAttemptDuration?: number };
 
 export interface Activity {
   id: string;
@@ -14,12 +14,12 @@ export interface Activity {
 }
 
 export interface LogEntry {
-  id: string;
+  id?: string;
   activityId: string;
   date: string;       // "YYYY-MM-DD"
   time: string;       // "HH:mm"
   value: number;      // integer for count, total seconds for duration
   notes: string;
-  createdAt: string;  // ISO 8601
+  createdAt?: string; // ISO 8601 (legacy, no longer written)
   bestOf?: BestOfData;
 }

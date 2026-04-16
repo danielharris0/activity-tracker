@@ -11,6 +11,7 @@ interface ChartConfigState {
   missingBestOf: MissingBestOfHandling;
   datePreset: DatePreset;
   customDateRange: { start: string; end: string } | null;
+  showDebugTable: boolean;
 
   toggleLayer: (type: ChartLayerType) => void;
   setKernelStdDevDays: (days: number) => void;
@@ -18,6 +19,8 @@ interface ChartConfigState {
   setMissingBestOf: (handling: MissingBestOfHandling) => void;
   setDatePreset: (preset: DatePreset) => void;
   setCustomDateRange: (start: string, end: string) => void;
+  setCustomDateRangeFromTimestamps: (startMs: number, endMs: number) => void;
+  toggleDebugTable: () => void;
 }
 
 const defaultEnabled = new Set<ChartLayerType>(
@@ -31,6 +34,7 @@ export const useChartConfigStore = create<ChartConfigState>((set) => ({
   missingBestOf: 'treat-as-1',
   datePreset: 'all',
   customDateRange: null,
+  showDebugTable: false,
 
   toggleLayer: (type) =>
     set((state) => {
@@ -49,4 +53,9 @@ export const useChartConfigStore = create<ChartConfigState>((set) => ({
   setDatePreset: (preset) => set({ datePreset: preset, customDateRange: null }),
   setCustomDateRange: (start, end) =>
     set({ datePreset: 'custom', customDateRange: { start, end } }),
+  setCustomDateRangeFromTimestamps: (startMs, endMs) => {
+    const toDateStr = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+    set({ datePreset: 'custom', customDateRange: { start: toDateStr(startMs), end: toDateStr(endMs) } });
+  },
+  toggleDebugTable: () => set((s) => ({ showDebugTable: !s.showDebugTable })),
 }));

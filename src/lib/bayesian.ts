@@ -1,5 +1,5 @@
 import type { LogEntry } from '../types/activity';
-import type { BayesianEstimate, BayesianParams, MissingBestOfHandling } from '../types/statistics';
+import type { BayesianEstimate, BayesianParams, BayesianDebugData, MarginalEntry, MissingBestOfHandling } from '../types/statistics';
 import { logNormalPdf, logNormalCdf } from './normal';
 
 export interface Observation {
@@ -77,9 +77,10 @@ export function prepareObservations(
       if (entry.bestOf.type === 'attempts') {
         effectiveN = Math.max(1, entry.bestOf.count);
       } else {
-        // duration-based best-of
-        if (typicalAttemptDuration && typicalAttemptDuration > 0) {
-          effectiveN = Math.max(1, Math.floor(entry.bestOf.seconds / typicalAttemptDuration));
+        // duration-based best-of: prefer per-entry override, then activity-level
+        const tad = entry.bestOf.typicalAttemptDuration ?? typicalAttemptDuration;
+        if (tad && tad > 0) {
+          effectiveN = Math.max(1, Math.floor(entry.bestOf.seconds / tad));
         } else {
           effectiveN = 1; // can't convert without typical duration
         }
@@ -117,25 +118,230 @@ const MU_GRID_SIZE = 100;
 const SIGMA_GRID_SIZE = 50;
 const MAX_EVAL_POINTS = 300;
 
+const TARGET_FILL_COUNT = 100;
+const HOUR_MS = 3_600_000;
+
 /**
- * Generate evenly-spaced evaluation timestamps across the observation range.
+ * Generate evaluation timestamps: every observation timestamp plus evenly-spaced
+ * fill-in points in gaps (scaled to the total range). Fill-in points that fall
+ * too close to an observation are omitted.
  */
 export function generateEvalTimestamps(observations: Observation[]): number[] {
   if (observations.length === 0) return [];
 
-  const first = observations[0].timestamp;
-  const last = observations[observations.length - 1].timestamp;
+  // Deduplicated observation timestamps (already sorted)
+  const obsTimes: number[] = [];
+  for (const obs of observations) {
+    if (obsTimes.length === 0 || obsTimes[obsTimes.length - 1] !== obs.timestamp) {
+      obsTimes.push(obs.timestamp);
+    }
+  }
+
+  const first = obsTimes[0];
+  const last = obsTimes[obsTimes.length - 1];
   const range = last - first;
 
   if (range === 0) return [first];
 
-  const count = Math.min(MAX_EVAL_POINTS, Math.max(2, Math.ceil(range / DAY_MS)));
-  const step = range / (count - 1);
-  const timestamps: number[] = [];
-  for (let i = 0; i < count; i++) {
-    timestamps.push(first + i * step);
+  // Fill-in step scaled to range, with a floor of 1 hour
+  const fillStep = Math.max(HOUR_MS, range / TARGET_FILL_COUNT);
+  const minDist = fillStep / 2;
+
+  // Build a set of observation timestamps for fast proximity checks
+  const obsSet = new Set(obsTimes);
+
+  // Generate fill-in candidates and skip those too close to an observation
+  const fillTimestamps: number[] = [];
+  const fillCount = Math.floor(range / fillStep);
+  for (let i = 0; i <= fillCount; i++) {
+    const t = first + i * fillStep;
+    if (obsSet.has(t)) continue;
+    // Check proximity to nearest observation via linear scan (observations are sorted)
+    let tooClose = false;
+    for (let j = 0; j < obsTimes.length; j++) {
+      if (Math.abs(obsTimes[j] - t) < minDist) { tooClose = true; break; }
+      if (obsTimes[j] > t + minDist) break;
+    }
+    if (!tooClose) fillTimestamps.push(t);
   }
-  return timestamps;
+
+  // Merge: all observations + fill-in, then sort
+  const merged = [...obsTimes, ...fillTimestamps].sort((a, b) => a - b);
+
+  // Cap at MAX_EVAL_POINTS: keep all observations, thin fill-in evenly
+  if (merged.length <= MAX_EVAL_POINTS) return merged;
+
+  const result = new Set(obsTimes);
+  const budget = MAX_EVAL_POINTS - result.size;
+  if (budget > 0 && fillTimestamps.length > 0) {
+    const keepStep = fillTimestamps.length / budget;
+    for (let i = 0; i < budget; i++) {
+      result.add(fillTimestamps[Math.floor(i * keepStep)]);
+    }
+  }
+  return [...result].sort((a, b) => a - b);
+}
+
+// --- Shared grid infrastructure ---
+
+interface GridSetup {
+  muGrid: number[];
+  sigmaGrid: number[];
+  gridSize: number;
+}
+
+function buildGrid(observations: Observation[]): GridSetup {
+  const values = observations.map(o => o.value);
+  const minVal = Math.min(...values);
+  const maxVal = Math.max(...values);
+  const valRange = Math.max(maxVal - minVal, 1);
+
+  const muMin = minVal - valRange;
+  const muMax = maxVal + valRange;
+  const sigmaMin = valRange / 200;
+  const sigmaMax = Math.max(valRange * 2, sigmaMin * 10);
+
+  const muStep = (muMax - muMin) / (MU_GRID_SIZE - 1);
+  const sigmaStep = (sigmaMax - sigmaMin) / (SIGMA_GRID_SIZE - 1);
+
+  const muGrid: number[] = [];
+  for (let i = 0; i < MU_GRID_SIZE; i++) muGrid.push(muMin + i * muStep);
+
+  const sigmaGrid: number[] = [];
+  for (let j = 0; j < SIGMA_GRID_SIZE; j++) sigmaGrid.push(sigmaMin + j * sigmaStep);
+
+  return { muGrid, sigmaGrid, gridSize: MU_GRID_SIZE * SIGMA_GRID_SIZE };
+}
+
+interface PosteriorResult {
+  muMarginal: Float64Array;
+  sigmaMarginal: Float64Array;
+  meanMu: number;
+  meanSigma: number;
+  ciLower: number;
+  ciUpper: number;
+}
+
+/**
+ * Core posterior computation for a single evaluation timestamp.
+ * Shared by both computeBayesianEstimates and computeBayesianDebugAtTimestamp.
+ */
+function computePosteriorAtTimestamp(
+  observations: Observation[],
+  weights: number[],
+  relevant: number[],
+  grid: GridSetup,
+  logPosterior: Float64Array,
+): PosteriorResult | null {
+  const { muGrid, sigmaGrid, gridSize } = grid;
+
+  logPosterior.fill(0);
+
+  for (const idx of relevant) {
+    const obs = observations[idx];
+    const w = weights[idx];
+    for (let mi = 0; mi < MU_GRID_SIZE; mi++) {
+      const mu = muGrid[mi];
+      for (let si = 0; si < SIGMA_GRID_SIZE; si++) {
+        const sigma = sigmaGrid[si];
+        const ll = orderStatLogLikelihood(obs.value, mu, sigma, obs.effectiveN);
+        logPosterior[mi * SIGMA_GRID_SIZE + si] += w * ll;
+      }
+    }
+  }
+
+  // Convert log-posterior to posterior: subtract max, exponentiate, normalize
+  let maxLogP = -Infinity;
+  for (let k = 0; k < gridSize; k++) {
+    if (logPosterior[k] > maxLogP) maxLogP = logPosterior[k];
+  }
+
+  let totalProb = 0;
+  for (let k = 0; k < gridSize; k++) {
+    const p = Math.exp(logPosterior[k] - maxLogP);
+    logPosterior[k] = p;
+    totalProb += p;
+  }
+
+  if (totalProb === 0) return null;
+
+  for (let k = 0; k < gridSize; k++) logPosterior[k] /= totalProb;
+
+  // Marginal over mu (sum over sigma for each mu)
+  const muMarginal = new Float64Array(MU_GRID_SIZE);
+  for (let mi = 0; mi < MU_GRID_SIZE; mi++) {
+    let sum = 0;
+    for (let si = 0; si < SIGMA_GRID_SIZE; si++) {
+      sum += logPosterior[mi * SIGMA_GRID_SIZE + si];
+    }
+    muMarginal[mi] = sum;
+  }
+
+  // Marginal over sigma (sum over mu for each sigma)
+  const sigmaMarginal = new Float64Array(SIGMA_GRID_SIZE);
+  for (let si = 0; si < SIGMA_GRID_SIZE; si++) {
+    let sum = 0;
+    for (let mi = 0; mi < MU_GRID_SIZE; mi++) {
+      sum += logPosterior[mi * SIGMA_GRID_SIZE + si];
+    }
+    sigmaMarginal[si] = sum;
+  }
+
+  // Weighted means
+  let meanMu = 0;
+  for (let mi = 0; mi < MU_GRID_SIZE; mi++) {
+    meanMu += muGrid[mi] * muMarginal[mi];
+  }
+
+  let meanSigma = 0;
+  for (let si = 0; si < SIGMA_GRID_SIZE; si++) {
+    meanSigma += sigmaGrid[si] * sigmaMarginal[si];
+  }
+
+  // 90% credible interval for mu (5th and 95th percentile)
+  let cumulative = 0;
+  let ciLower = muGrid[0];
+  let ciUpper = muGrid[MU_GRID_SIZE - 1];
+  let foundLower = false;
+  for (let mi = 0; mi < MU_GRID_SIZE; mi++) {
+    cumulative += muMarginal[mi];
+    if (!foundLower && cumulative >= 0.05) {
+      ciLower = muGrid[mi];
+      foundLower = true;
+    }
+    if (cumulative >= 0.95) {
+      ciUpper = muGrid[mi];
+      break;
+    }
+  }
+
+  return { muMarginal, sigmaMarginal, meanMu, meanSigma, ciLower, ciUpper };
+}
+
+/**
+ * Compute kernel weights and filter by cutoff threshold for a single timestamp.
+ */
+function computeWeightsAtTimestamp(
+  observations: Observation[],
+  t: number,
+  kernelVariance: number,
+  cutoffFraction: number,
+): { weights: number[]; relevant: number[] } {
+  const weights: number[] = [];
+  let maxWeight = 0;
+  for (let i = 0; i < observations.length; i++) {
+    const w = computeKernelWeight(observations[i].timestamp - t, kernelVariance);
+    weights.push(w);
+    if (w > maxWeight) maxWeight = w;
+  }
+
+  const threshold = maxWeight * cutoffFraction;
+  const relevant: number[] = [];
+  for (let i = 0; i < observations.length; i++) {
+    if (weights[i] >= threshold) relevant.push(i);
+  }
+
+  return { weights, relevant };
 }
 
 export function computeBayesianEstimates(
@@ -147,151 +353,84 @@ export function computeBayesianEstimates(
 
   const kernelVariance = computeKernelVariance(params.kernelStdDevDays);
   const cutoffFraction = params.cutoffThresholdPct / 100;
-
-  // Determine grid ranges from observation values
-  const values = observations.map(o => o.value);
-  const minVal = Math.min(...values);
-  const maxVal = Math.max(...values);
-  const valRange = Math.max(maxVal - minVal, 1); // avoid zero range
-
-  const muMin = minVal - valRange;
-  const muMax = maxVal + valRange;
-  const sigmaMin = valRange / 200;
-  const sigmaMax = Math.max(valRange * 2, sigmaMin * 10);
-
-  // Build grid arrays
-  const muStep = (muMax - muMin) / (MU_GRID_SIZE - 1);
-  const sigmaStep = (sigmaMax - sigmaMin) / (SIGMA_GRID_SIZE - 1);
-
-  const muGrid: number[] = [];
-  for (let i = 0; i < MU_GRID_SIZE; i++) muGrid.push(muMin + i * muStep);
-
-  const sigmaGrid: number[] = [];
-  for (let j = 0; j < SIGMA_GRID_SIZE; j++) sigmaGrid.push(sigmaMin + j * sigmaStep);
-
-  // Pre-allocate grid (flat array for performance)
-  const gridSize = MU_GRID_SIZE * SIGMA_GRID_SIZE;
-  const logPosterior = new Float64Array(gridSize);
+  const grid = buildGrid(observations);
+  const logPosterior = new Float64Array(grid.gridSize);
 
   const results: BayesianEstimate[] = [];
 
   for (const t of evalTimestamps) {
-    // Compute kernel weights and apply cutoff
-    const weights: number[] = [];
-    const relevant: number[] = [];
-
-    let maxWeight = 0;
-    for (let i = 0; i < observations.length; i++) {
-      const w = computeKernelWeight(observations[i].timestamp - t, kernelVariance);
-      weights.push(w);
-      if (w > maxWeight) maxWeight = w;
-    }
-
-    const threshold = maxWeight * cutoffFraction;
-    for (let i = 0; i < observations.length; i++) {
-      if (weights[i] >= threshold) relevant.push(i);
-    }
+    const { weights, relevant } = computeWeightsAtTimestamp(observations, t, kernelVariance, cutoffFraction);
 
     if (relevant.length === 0) {
       results.push({ timestamp: t, mean: NaN, stddev: NaN, ciLower: NaN, ciUpper: NaN });
       continue;
     }
 
-    // Compute weighted log-likelihood over grid
-    logPosterior.fill(0);
-
-    for (const idx of relevant) {
-      const obs = observations[idx];
-      const w = weights[idx];
-      for (let mi = 0; mi < MU_GRID_SIZE; mi++) {
-        const mu = muGrid[mi];
-        for (let si = 0; si < SIGMA_GRID_SIZE; si++) {
-          const sigma = sigmaGrid[si];
-          const ll = orderStatLogLikelihood(obs.value, mu, sigma, obs.effectiveN);
-          logPosterior[mi * SIGMA_GRID_SIZE + si] += w * ll;
-        }
-      }
-    }
-
-    // Convert log-posterior to posterior: subtract max, exponentiate, normalize
-    let maxLogP = -Infinity;
-    for (let k = 0; k < gridSize; k++) {
-      if (logPosterior[k] > maxLogP) maxLogP = logPosterior[k];
-    }
-
-    let totalProb = 0;
-    // Re-use logPosterior array to store probabilities
-    for (let k = 0; k < gridSize; k++) {
-      const p = Math.exp(logPosterior[k] - maxLogP);
-      logPosterior[k] = p;
-      totalProb += p;
-    }
-
-    if (totalProb === 0) {
+    const posterior = computePosteriorAtTimestamp(observations, weights, relevant, grid, logPosterior);
+    if (!posterior) {
       results.push({ timestamp: t, mean: NaN, stddev: NaN, ciLower: NaN, ciUpper: NaN });
       continue;
     }
 
-    // Normalize
-    for (let k = 0; k < gridSize; k++) logPosterior[k] /= totalProb;
-
-    // Marginal over mu (sum over sigma for each mu)
-    const muMarginal = new Float64Array(MU_GRID_SIZE);
-    for (let mi = 0; mi < MU_GRID_SIZE; mi++) {
-      let sum = 0;
-      for (let si = 0; si < SIGMA_GRID_SIZE; si++) {
-        sum += logPosterior[mi * SIGMA_GRID_SIZE + si];
-      }
-      muMarginal[mi] = sum;
-    }
-
-    // Marginal over sigma (sum over mu for each sigma)
-    const sigmaMarginal = new Float64Array(SIGMA_GRID_SIZE);
-    for (let si = 0; si < SIGMA_GRID_SIZE; si++) {
-      let sum = 0;
-      for (let mi = 0; mi < MU_GRID_SIZE; mi++) {
-        sum += logPosterior[mi * SIGMA_GRID_SIZE + si];
-      }
-      sigmaMarginal[si] = sum;
-    }
-
-    // Mean of mu marginal
-    let meanMu = 0;
-    for (let mi = 0; mi < MU_GRID_SIZE; mi++) {
-      meanMu += muGrid[mi] * muMarginal[mi];
-    }
-
-    // Mean of sigma marginal
-    let meanSigma = 0;
-    for (let si = 0; si < SIGMA_GRID_SIZE; si++) {
-      meanSigma += sigmaGrid[si] * sigmaMarginal[si];
-    }
-
-    // 90% credible interval for mu (5th and 95th percentile)
-    let cumulative = 0;
-    let ciLower = muGrid[0];
-    let ciUpper = muGrid[MU_GRID_SIZE - 1];
-    let foundLower = false;
-    for (let mi = 0; mi < MU_GRID_SIZE; mi++) {
-      cumulative += muMarginal[mi];
-      if (!foundLower && cumulative >= 0.05) {
-        ciLower = muGrid[mi];
-        foundLower = true;
-      }
-      if (cumulative >= 0.95) {
-        ciUpper = muGrid[mi];
-        break;
-      }
-    }
-
     results.push({
       timestamp: t,
-      mean: meanMu,
-      stddev: meanSigma,
-      ciLower,
-      ciUpper,
+      mean: posterior.meanMu,
+      stddev: posterior.meanSigma,
+      ciLower: posterior.ciLower,
+      ciUpper: posterior.ciUpper,
     });
   }
 
   return results;
+}
+
+/**
+ * Compute full debug data for a single evaluation timestamp.
+ * Uses the same grid infrastructure as computeBayesianEstimates.
+ */
+export function computeBayesianDebugAtTimestamp(
+  observations: Observation[],
+  params: BayesianParams,
+  evalTimestamp: number,
+): BayesianDebugData | null {
+  if (observations.length === 0) return null;
+
+  const kernelVariance = computeKernelVariance(params.kernelStdDevDays);
+  const cutoffFraction = params.cutoffThresholdPct / 100;
+  const grid = buildGrid(observations);
+  const logPosterior = new Float64Array(grid.gridSize);
+
+  const { weights, relevant } = computeWeightsAtTimestamp(observations, evalTimestamp, kernelVariance, cutoffFraction);
+
+  if (relevant.length === 0) return null;
+
+  const posterior = computePosteriorAtTimestamp(observations, weights, relevant, grid, logPosterior);
+  if (!posterior) return null;
+
+  // Convert Float64Array marginals to MarginalEntry arrays
+  const muMarginal: MarginalEntry[] = grid.muGrid.map((v, i) => ({
+    gridValue: v,
+    probability: posterior.muMarginal[i],
+  }));
+
+  const sigmaMarginal: MarginalEntry[] = grid.sigmaGrid.map((v, i) => ({
+    gridValue: v,
+    probability: posterior.sigmaMarginal[i],
+  }));
+
+  return {
+    timestamp: evalTimestamp,
+    muMarginal,
+    sigmaMarginal,
+    weightedMeanMu: posterior.meanMu,
+    weightedMeanSigma: posterior.meanSigma,
+    relevantObservationCount: relevant.length,
+    observations: observations.map((obs, i) => ({
+      timestamp: obs.timestamp,
+      value: obs.value,
+      effectiveN: obs.effectiveN,
+      kernelWeight: weights[i],
+      relevant: relevant.includes(i),
+    })),
+  };
 }

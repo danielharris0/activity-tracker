@@ -19,7 +19,7 @@ export async function createSheetsProvider(
     return token;
   });
 
-  const { activitiesSheetId, progressSheetId } = await ensureSheetsExist(client);
+  const { activitiesSheetId } = await ensureSheetsExist(client);
 
   return {
     async loadAll() {
@@ -55,7 +55,5 @@ export async function createSheetsProvider(
 
     createProgressLog: (data, measurementType) =>
       progressApi.createProgressLog(client, data, measurementType),
-    deleteProgressLog: (id) =>
-      progressApi.deleteProgressLog(client, id, progressSheetId),
   };
 }

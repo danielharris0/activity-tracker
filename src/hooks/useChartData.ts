@@ -83,8 +83,8 @@ export function useChartData(
         if (enabledLayers.has('estimated-mean')) point.mean = est.mean;
         if (enabledLayers.has('estimated-stddev')) point.stddev = est.stddev;
         if (enabledLayers.has('confidence-band')) {
-          point.ciLower = est.ciLower;
-          point.ciUpper = est.ciUpper;
+          point.ciLower = Math.max(0, est.ciLower);
+          point.ciUpper = Math.max(0, est.ciUpper);
         }
       }
     }

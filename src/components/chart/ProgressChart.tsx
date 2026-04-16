@@ -14,11 +14,14 @@ import { CHART_COLORS } from '../../constants/colors';
 import { CustomTooltip } from './CustomTooltip';
 import { KernelOverlay } from './KernelOverlay';
 import { ChartControls } from './ChartControls';
+import { DateRangeControls } from './DateRangeControls';
+import { BayesianDebugTable } from './BayesianDebugTable';
 import { findNearestPerSeries, type NearestPoints } from '../../lib/chartHover';
+import { prepareObservations, computeBayesianDebugAtTimestamp } from '../../lib/bayesian';
 import type { LogEntry, Activity } from '../../types/activity';
 import type { BayesianChartPoint } from '../../types/chart';
 import { formatDuration } from '../../lib/duration';
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useRef } from 'react';
 
 interface ProgressChartProps {
   logs: LogEntry[];
@@ -75,6 +78,18 @@ export function ProgressChart({ logs, activityId, activity }: ProgressChartProps
 
   const chartData = useChartData(rawEntries, activity, enabledLayers, params);
 
+  const showDebugTable = useChartConfigStore(s => s.showDebugTable);
+  const toggleDebugTable = useChartConfigStore(s => s.toggleDebugTable);
+  const [debugTimestamp, setDebugTimestamp] = useState<number | null>(null);
+
+  // Compute debug data when clicking a data point and debug is enabled.
+  // Observation timestamps are now eval timestamps, so no snapping needed.
+  const debugData = useMemo(() => {
+    if (!showDebugTable || debugTimestamp == null) return null;
+    const observations = prepareObservations(rawEntries, activity.typicalAttemptDuration, missingBestOf);
+    return computeBayesianDebugAtTimestamp(observations, params, debugTimestamp);
+  }, [showDebugTable, debugTimestamp, rawEntries, activity.typicalAttemptDuration, missingBestOf, params]);
+
   return (
     <div className="space-y-4">
       <ChartControls />
@@ -95,10 +110,41 @@ export function ProgressChart({ logs, activityId, activity }: ProgressChartProps
               enabledLayers={enabledLayers}
               kernelStdDevDays={kernelStdDevDays}
               cutoffThresholdPct={cutoffThresholdPct}
+              onSelectTimestamp={showDebugTable ? setDebugTimestamp : undefined}
             />
           )}
         </ParentSize>
       )}
+
+      <div className="flex items-center gap-2">
+        <label className="text-xs font-medium text-gray-500">Debug:</label>
+        <button
+          role="switch"
+          aria-checked={showDebugTable}
+          onClick={toggleDebugTable}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ${
+            showDebugTable ? 'bg-gray-800' : 'bg-gray-300'
+          }`}
+        >
+          <span
+            className={`pointer-events-none inline-block h-4 w-4 translate-y-0.5 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+              showDebugTable ? 'translate-x-[18px]' : 'translate-x-0.5'
+            }`}
+          />
+        </button>
+        {showDebugTable && !debugData && chartData.length > 0 && (
+          <span className="text-xs text-gray-400">Click a data point to inspect</span>
+        )}
+      </div>
+
+      {showDebugTable && debugData && (
+        <BayesianDebugTable
+          debug={debugData}
+          measurementType={activity.measurementType}
+        />
+      )}
+
+      <DateRangeControls />
     </div>
   );
 }
@@ -112,6 +158,7 @@ interface ProgressChartInnerProps {
   enabledLayers: Set<string>;
   kernelStdDevDays: number;
   cutoffThresholdPct: number;
+  onSelectTimestamp?: (ts: number) => void;
 }
 
 function ProgressChartInner({
@@ -123,24 +170,37 @@ function ProgressChartInner({
   enabledLayers,
   kernelStdDevDays,
   cutoffThresholdPct,
+  onSelectTimestamp,
 }: ProgressChartInnerProps) {
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
 
+  const setCustomDateRangeFromTimestamps = useChartConfigStore(s => s.setCustomDateRangeFromTimestamps);
+
   const [hoveredTimestamp, setHoveredTimestamp] = useState<number | null>(null);
-  const showKernel = enabledLayers.has('estimated-mean') || enabledLayers.has('estimated-stddev');
+  const showDebug = useChartConfigStore(s => s.showDebugTable);
+  const showKernel = showDebug && (enabledLayers.has('estimated-mean') || enabledLayers.has('estimated-stddev'));
+
+  // Pan-by-drag state (local during drag, committed on mouseup)
+  const [panOffset, setPanOffset] = useState(0); // ms offset applied during drag
+  const dragRef = useRef<{ startX: number; domainAtStart: [number, number] } | null>(null);
+  const isDragging = dragRef.current != null && panOffset !== 0;
 
   const { showTooltip, hideTooltip, tooltipData, tooltipLeft, tooltipTop, tooltipOpen } =
     useTooltip<NearestPoints>();
 
   // Build scales
-  const xScale = useMemo(() => {
+  const dataDomain = useMemo(() => {
     const timestamps = chartData.map(d => d.timestamp);
+    return [Math.min(...timestamps), Math.max(...timestamps)] as [number, number];
+  }, [chartData]);
+
+  const xScale = useMemo(() => {
     return scaleLinear<number>({
-      domain: [Math.min(...timestamps), Math.max(...timestamps)],
+      domain: [dataDomain[0] + panOffset, dataDomain[1] + panOffset],
       range: [0, innerWidth],
     });
-  }, [chartData, innerWidth]);
+  }, [dataDomain, panOffset, innerWidth]);
 
   const yScale = useMemo(() => {
     const values: number[] = [];
@@ -157,10 +217,23 @@ function ProgressChartInner({
     const max = Math.max(...values);
     const padding = (max - min) * 0.05 || 1;
     return scaleLinear<number>({
-      domain: [min - padding, max + padding],
+      domain: [Math.max(0, min - padding), max + padding],
       range: [innerHeight, 0],
     });
   }, [chartData, innerHeight]);
+
+  const DAY_MS = 86_400_000;
+  const xTickFormat = useMemo(() => {
+    const [domainMin, domainMax] = xScale.domain();
+    const rangeMs = domainMax - domainMin;
+    if (rangeMs < DAY_MS) {
+      return (ts: number) => format(new Date(ts), 'HH:mm');
+    }
+    if (rangeMs < 7 * DAY_MS) {
+      return (ts: number) => format(new Date(ts), 'MMM d HH:mm');
+    }
+    return (ts: number) => format(new Date(ts), 'MMM d');
+  }, [xScale]);
 
   const yAxisFormatter = activity.measurementType === 'duration'
     ? (v: number) => formatDuration(Math.round(v))
@@ -185,6 +258,17 @@ function ProgressChartInner({
     [chartData, enabledLayers],
   );
 
+  const CLICK_THRESHOLD_PX = 3;
+
+  const handleMouseDown = useCallback((event: React.MouseEvent<SVGRectElement>) => {
+    const point = localPoint(event);
+    if (!point) return;
+    dragRef.current = {
+      startX: point.x - margin.left,
+      domainAtStart: [dataDomain[0] + panOffset, dataDomain[1] + panOffset],
+    };
+  }, [dataDomain, panOffset]);
+
   const handleMouseMove = useCallback((event: React.MouseEvent<SVGRectElement>) => {
     const point = localPoint(event);
     if (!point) return;
@@ -192,6 +276,19 @@ function ProgressChartInner({
     const x = point.x - margin.left;
     if (x < 0 || x > innerWidth) return;
 
+    // If dragging, pan the view
+    if (dragRef.current) {
+      const pxDelta = x - dragRef.current.startX;
+      if (Math.abs(pxDelta) > CLICK_THRESHOLD_PX) {
+        const domain = dragRef.current.domainAtStart;
+        const msPerPx = (domain[1] - domain[0]) / innerWidth;
+        const msOffset = -pxDelta * msPerPx;
+        setPanOffset(msOffset + (dragRef.current.domainAtStart[0] - dataDomain[0]));
+      }
+      return;
+    }
+
+    // Otherwise, show tooltip
     const cursorTimestamp = xScale.invert(x);
     const nearest = findNearestPerSeries(cursorTimestamp, chartData);
 
@@ -204,12 +301,42 @@ function ProgressChartInner({
     if (showKernel && nearest.raw) {
       setHoveredTimestamp(nearest.raw.timestamp);
     }
-  }, [xScale, chartData, innerWidth, showTooltip, showKernel]);
+  }, [xScale, chartData, innerWidth, showTooltip, showKernel, dataDomain]);
+
+  const commitPan = useCallback(() => {
+    if (panOffset !== 0) {
+      setCustomDateRangeFromTimestamps(
+        dataDomain[0] + panOffset,
+        dataDomain[1] + panOffset,
+      );
+      setPanOffset(0);
+    }
+    dragRef.current = null;
+  }, [panOffset, dataDomain, setCustomDateRangeFromTimestamps]);
+
+  const handleMouseUp = useCallback((event: React.MouseEvent<SVGRectElement>) => {
+    // Detect click (no significant drag movement)
+    if (dragRef.current && Math.abs(panOffset) < 1) {
+      const point = localPoint(event);
+      if (point && onSelectTimestamp) {
+        const x = point.x - margin.left;
+        if (x >= 0 && x <= innerWidth) {
+          const cursorTimestamp = xScale.invert(x);
+          const nearest = findNearestPerSeries(cursorTimestamp, chartData);
+          if (nearest.raw) {
+            onSelectTimestamp(nearest.raw.timestamp);
+          }
+        }
+      }
+    }
+    commitPan();
+  }, [commitPan, panOffset, xScale, chartData, innerWidth, onSelectTimestamp]);
 
   const handleMouseLeave = useCallback(() => {
+    commitPan();
     hideTooltip();
     setHoveredTimestamp(null);
-  }, [hideTooltip]);
+  }, [hideTooltip, commitPan]);
 
   if (innerWidth <= 0 || innerHeight <= 0) return null;
 
@@ -339,7 +466,7 @@ function ProgressChartInner({
           <AxisBottom
             top={innerHeight}
             scale={xScale}
-            tickFormat={(ts) => format(new Date(ts as number), 'MMM d')}
+            tickFormat={(ts) => xTickFormat(ts as number)}
             numTicks={Math.max(2, Math.floor(innerWidth / 80))}
             tickLabelProps={() => ({ fontSize: 12, fill: '#9ca3af', textAnchor: 'middle' as const })}
             stroke="#9ca3af"
@@ -359,7 +486,10 @@ function ProgressChartInner({
             width={innerWidth}
             height={innerHeight}
             fill="transparent"
+            style={{ cursor: dragRef.current ? 'grabbing' : 'grab' }}
+            onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseLeave}
           />
         </Group>

@@ -1,19 +1,24 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { parseDuration, formatDuration } from '../../lib/duration';
 
 interface DurationInputProps {
   value: string;
   onChange: (value: string) => void;
   onParsed: (seconds: number | null) => void;
+  disabled?: boolean;
 }
 
-export function DurationInput({ value, onChange, onParsed }: DurationInputProps) {
+export function DurationInput({ value, onChange, onParsed, disabled }: DurationInputProps) {
   const [preview, setPreview] = useState<string | null>(null);
+  const [visible, setVisible] = useState(false);
   const [isValid, setIsValid] = useState(true);
+  const fadeTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  const handleBlur = () => {
+  // Parse live on every change
+  useEffect(() => {
     if (!value.trim()) {
       setPreview(null);
+      setVisible(false);
       setIsValid(true);
       onParsed(null);
       return;
@@ -22,14 +27,22 @@ export function DurationInput({ value, onChange, onParsed }: DurationInputProps)
     const seconds = parseDuration(value);
     if (seconds !== null) {
       setPreview(formatDuration(seconds));
+      setVisible(true);
       setIsValid(true);
       onParsed(seconds);
+
+      // Auto-fade after 2s of no typing
+      clearTimeout(fadeTimer.current);
+      fadeTimer.current = setTimeout(() => setVisible(false), 2000);
     } else {
       setPreview(null);
+      setVisible(false);
       setIsValid(false);
       onParsed(null);
     }
-  };
+
+    return () => clearTimeout(fadeTimer.current);
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
@@ -37,19 +50,24 @@ export function DurationInput({ value, onChange, onParsed }: DurationInputProps)
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onBlur={handleBlur}
+        disabled={disabled}
         placeholder="e.g. 1:23:45 or 90"
         className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:border-transparent ${
-          isValid
-            ? 'border-gray-300 focus:ring-indigo-500'
-            : 'border-red-300 focus:ring-red-500'
+          disabled
+            ? 'opacity-50 bg-gray-50 cursor-not-allowed'
+            : isValid
+              ? 'border-gray-300 focus:ring-indigo-500'
+              : 'border-red-300 focus:ring-red-500'
         }`}
       />
-      <div className="mt-1 text-xs">
-        {preview && <span className="text-green-600">Parsed as: {preview}</span>}
-        {!isValid && <span className="text-red-600">Invalid duration. Use hh:mm:ss, mm:ss, or seconds</span>}
-        {!preview && isValid && (
-          <span className="text-gray-400">Format: hh:mm:ss, mm:ss, or seconds</span>
+      <div className="mt-1 text-xs h-5">
+        {visible && preview && (
+          <span className="inline-block bg-green-100 text-green-800 px-2 py-0.5 rounded font-medium animate-fade-in">
+            {preview}
+          </span>
+        )}
+        {!isValid && (
+          <span className="text-red-600">Invalid duration. Use hh:mm:ss, mm:ss, or seconds</span>
         )}
       </div>
     </div>

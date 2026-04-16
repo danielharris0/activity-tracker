@@ -14,7 +14,6 @@ interface DataState {
   updateActivity(id: string, updates: Partial<Omit<Activity, 'id'>>): Promise<Activity>;
   deleteActivity(id: string): Promise<void>;
   createProgressLog(data: Omit<LogEntry, 'id' | 'createdAt'>): Promise<LogEntry>;
-  deleteProgressLog(id: string): Promise<void>;
 }
 
 function requireProvider(): DataProvider {
@@ -63,8 +62,4 @@ export const useDataStore = create<DataState>((set, get) => ({
     return log;
   },
 
-  async deleteProgressLog(id) {
-    await requireProvider().deleteProgressLog(id);
-    set((s) => ({ logs: s.logs.filter((l) => l.id !== id) }));
-  },
 }));

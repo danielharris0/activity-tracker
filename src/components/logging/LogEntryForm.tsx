@@ -6,8 +6,6 @@ import { parseDuration } from '../../lib/duration';
 import { DurationInput } from './DurationInput';
 import { CountInput } from './CountInput';
 
-type BestOfType = 'none' | 'attempts' | 'duration';
-
 interface LogEntryFormProps {
   activity: Activity;
 }
@@ -21,12 +19,16 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
   const [valueInput, setValueInput] = useState('');
   const [parsedDuration, setParsedDuration] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
-  const [bestOfType, setBestOfType] = useState<BestOfType>('none');
   const [bestOfAttempts, setBestOfAttempts] = useState('');
   const [bestOfDurationInput, setBestOfDurationInput] = useState('');
   const [parsedBestOfDuration, setParsedBestOfDuration] = useState<number | null>(null);
+  const [inlineTypicalDuration, setInlineTypicalDuration] = useState('');
+  const [parsedInlineTypicalDuration, setParsedInlineTypicalDuration] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const hasAttempts = bestOfAttempts.trim() !== '';
+  const hasDuration = bestOfDurationInput.trim() !== '';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,20 +52,30 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
     }
 
     let bestOf: BestOfData | undefined;
-    if (bestOfType === 'attempts') {
+    if (hasAttempts) {
       const count = parseInt(bestOfAttempts, 10);
       if (isNaN(count) || count < 1) {
         setError('Please enter a valid number of attempts (1 or more)');
         return;
       }
       bestOf = { type: 'attempts', count };
-    } else if (bestOfType === 'duration') {
+    } else if (hasDuration) {
       const seconds = parsedBestOfDuration ?? parseDuration(bestOfDurationInput);
       if (seconds === null || seconds <= 0) {
-        setError('Please enter a valid practice duration');
+        setError('Please enter a valid session duration');
         return;
       }
-      bestOf = { type: 'duration', seconds };
+      // If activity has no typical duration, require inline entry
+      if (!activity.typicalAttemptDuration) {
+        const typicalSecs = parsedInlineTypicalDuration ?? parseDuration(inlineTypicalDuration);
+        if (!typicalSecs || typicalSecs <= 0) {
+          setError('Please enter a typical attempt duration to convert session time to attempts');
+          return;
+        }
+        bestOf = { type: 'duration', seconds, typicalAttemptDuration: typicalSecs };
+      } else {
+        bestOf = { type: 'duration', seconds };
+      }
     }
 
     setIsSubmitting(true);
@@ -79,10 +91,11 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
       setValueInput('');
       setParsedDuration(null);
       setNotes('');
-      setBestOfType('none');
       setBestOfAttempts('');
       setBestOfDurationInput('');
       setParsedBestOfDuration(null);
+      setInlineTypicalDuration('');
+      setParsedInlineTypicalDuration(null);
       const n = new Date();
       setDate(format(n, 'yyyy-MM-dd'));
       setTime(format(n, 'HH:mm'));
@@ -135,36 +148,77 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
         )}
       </div>
 
-      {/* Best-of section */}
-      <div className="mb-3">
-        <label className="block text-xs font-medium text-gray-600 mb-1">Best of (optional)</label>
-        <select
-          value={bestOfType}
-          onChange={(e) => setBestOfType(e.target.value as BestOfType)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent mb-2"
-        >
-          <option value="none">None</option>
-          <option value="attempts">Number of attempts</option>
-          <option value="duration">Practice duration</option>
-        </select>
-        {bestOfType === 'attempts' && (
-          <input
-            type="number"
-            min={1}
-            value={bestOfAttempts}
-            onChange={(e) => setBestOfAttempts(e.target.value)}
-            placeholder="e.g. 5"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          />
+      {/* Best-of section — two always-visible fields */}
+      <fieldset className="mb-3">
+        <legend className="text-xs font-medium text-gray-600 mb-1">Best of (optional)</legend>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Session duration</label>
+            <div className="relative">
+              <DurationInput
+                value={bestOfDurationInput}
+                onChange={(v) => {
+                  setBestOfDurationInput(v);
+                  if (!v.trim()) setParsedBestOfDuration(null);
+                }}
+                onParsed={setParsedBestOfDuration}
+                disabled={hasAttempts}
+              />
+              {hasDuration && !hasAttempts && (
+                <button
+                  type="button"
+                  onClick={() => { setBestOfDurationInput(''); setParsedBestOfDuration(null); }}
+                  className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 text-sm leading-none"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Number of attempts</label>
+            <div className="relative">
+              <input
+                type="number"
+                min={1}
+                value={bestOfAttempts}
+                onChange={(e) => setBestOfAttempts(e.target.value)}
+                disabled={hasDuration}
+                placeholder="e.g. 5"
+                className={`w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
+                  hasDuration ? 'opacity-50 bg-gray-50 cursor-not-allowed' : ''
+                }`}
+              />
+              {hasAttempts && !hasDuration && (
+                <button
+                  type="button"
+                  onClick={() => setBestOfAttempts('')}
+                  className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 text-sm leading-none"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Conditional typical attempt duration — only when session duration is filled and activity has none configured */}
+        {hasDuration && parsedBestOfDuration && !activity.typicalAttemptDuration && (
+          <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+            <label className="block text-xs font-medium text-amber-800 mb-1">
+              Typical attempt duration
+            </label>
+            <p className="text-xs text-amber-600 mb-2">
+              Needed to estimate the number of attempts from session duration.
+            </p>
+            <DurationInput
+              value={inlineTypicalDuration}
+              onChange={setInlineTypicalDuration}
+              onParsed={setParsedInlineTypicalDuration}
+            />
+          </div>
         )}
-        {bestOfType === 'duration' && (
-          <DurationInput
-            value={bestOfDurationInput}
-            onChange={setBestOfDurationInput}
-            onParsed={setParsedBestOfDuration}
-          />
-        )}
-      </div>
+      </fieldset>
 
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-600 mb-1">Notes (optional)</label>

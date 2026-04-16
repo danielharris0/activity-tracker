@@ -4,11 +4,11 @@ import { useActivities } from '../../hooks/useActivities';
 import { useActivityLogs } from '../../hooks/useActivityLogs';
 import { useDataStore } from '../../stores/dataStore';
 import { LogEntryForm } from '../logging/LogEntryForm';
-import { LogEntryTable } from '../logging/LogEntryTable';
 import { ProgressChart } from '../chart/ProgressChart';
-import { formatDuration } from '../../lib/duration';
+import { formatDuration, parseDuration } from '../../lib/duration';
 import { DurationInput } from '../logging/DurationInput';
-import { parseDuration } from '../../lib/duration';
+import { InlineEdit } from '../ui/InlineEdit';
+import { InlineTagsEdit } from '../ui/InlineTagsEdit';
 
 export function ActivityDetail() {
   const { id } = useParams<{ id: string }>();
@@ -55,22 +55,31 @@ export function ActivityDetail() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h2 className="text-xl font-bold text-gray-900">{activity.name}</h2>
-        {activity.description && (
-          <p className="text-sm text-gray-500 mt-1">{activity.description}</p>
-        )}
+        <InlineEdit
+          value={activity.name}
+          onSave={(name) => updateActivity(activity.id, { name })}
+          as="h2"
+          className="text-xl font-bold text-gray-900"
+          validate={(v) => v.trim() ? null : 'Name is required'}
+        />
+        <div className="mt-1">
+          <InlineEdit
+            value={activity.description}
+            onSave={(description) => updateActivity(activity.id, { description })}
+            as="p"
+            className="text-sm text-gray-500"
+            inputType="textarea"
+            emptyText="No description — click to add"
+          />
+        </div>
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
             {activity.measurementType === 'duration' ? 'Duration' : 'Count'}
           </span>
-          {activity.tags.map((tag) => (
-            <span
-              key={tag}
-              className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full"
-            >
-              {tag}
-            </span>
-          ))}
+          <InlineTagsEdit
+            tags={activity.tags}
+            onSave={(tags) => updateActivity(activity.id, { tags })}
+          />
         </div>
 
         {/* Typical attempt duration */}
@@ -129,20 +138,9 @@ export function ActivityDetail() {
         />
       </div>
 
-      {/* Log form + table side by side on wider screens */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1">
-          <LogEntryForm activity={activity} />
-        </div>
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Log Entries</h3>
-            <LogEntryTable
-              logs={logs}
-              measurementType={activity.measurementType}
-            />
-          </div>
-        </div>
+      {/* Log form */}
+      <div className="max-w-lg">
+        <LogEntryForm activity={activity} />
       </div>
     </div>
   );

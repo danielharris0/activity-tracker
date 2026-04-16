@@ -40,7 +40,7 @@ export function rowToActivity(row: string[], colMap: Map<string, number>): Activ
 
 // --- Progress logs ---
 
-export const PROGRESS_HEADERS = ['id', 'activityId', 'date', 'time', 'value', 'notes', 'createdAt', 'bestOfType', 'bestOfValue'];
+export const PROGRESS_HEADERS = ['activityId', 'date', 'time', 'value', 'notes', 'bestOfType', 'bestOfValue', 'bestOfTypicalDuration'];
 
 export function progressLogToRow(log: LogEntry, measurementType: MeasurementType): string[] {
   const valueStr = measurementType === 'duration'
@@ -49,21 +49,24 @@ export function progressLogToRow(log: LogEntry, measurementType: MeasurementType
 
   let bestOfType = '';
   let bestOfValue = '';
+  let bestOfTypicalDuration = '';
   if (log.bestOf) {
     bestOfType = log.bestOf.type;
     bestOfValue = String(log.bestOf.type === 'attempts' ? log.bestOf.count : log.bestOf.seconds);
+    if (log.bestOf.type === 'duration' && log.bestOf.typicalAttemptDuration != null) {
+      bestOfTypicalDuration = String(log.bestOf.typicalAttemptDuration);
+    }
   }
 
   return [
-    log.id,
     log.activityId,
     log.date,
     log.time,
     valueStr,
     log.notes,
-    log.createdAt,
     bestOfType,
     bestOfValue,
+    bestOfTypicalDuration,
   ];
 }
 
@@ -86,17 +89,25 @@ export function rowToProgressLog(
     if (!isNaN(count) && count > 0) bestOf = { type: 'attempts', count };
   } else if (boType === 'duration' && boValue) {
     const seconds = parseInt(boValue, 10);
-    if (!isNaN(seconds) && seconds > 0) bestOf = { type: 'duration', seconds };
+    if (!isNaN(seconds) && seconds > 0) {
+      const boTypicalDur = get('bestoftypicalduration');
+      const typicalSecs = boTypicalDur ? parseInt(boTypicalDur, 10) : undefined;
+      bestOf = {
+        type: 'duration',
+        seconds,
+        ...(typicalSecs && !isNaN(typicalSecs) ? { typicalAttemptDuration: typicalSecs } : {}),
+      };
+    }
   }
 
   return {
-    id: get('id'),
+    ...(get('id') ? { id: get('id') } : {}),
     activityId: get('activityid'),
     date: get('date'),
     time: get('time'),
     value,
     notes: get('notes'),
-    createdAt: get('createdat'),
+    ...(get('createdat') ? { createdAt: get('createdat') } : {}),
     ...(bestOf ? { bestOf } : {}),
   };
 }

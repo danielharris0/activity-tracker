@@ -51,16 +51,21 @@ export function CustomTooltip({ cursorTimestamp, nearest, measurementType }: Cus
         );
       })}
       {hasCiBand && (
-        <div className="flex items-center gap-2 text-sm">
-          <span
-            className="w-2 h-2 rounded-full"
-            style={{ backgroundColor: CHART_COLORS['confidence-band'] }}
-          />
-          <span className="text-gray-600">90% CI:</span>
-          <span className="font-medium text-gray-900">
-            [{formatValue(nearest.ciLower!.value)}, {formatValue(nearest.ciUpper!.value)}]
-          </span>
-        </div>
+        <>
+          <div className="flex items-center gap-2 text-sm">
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: CHART_COLORS['confidence-band'] }}
+            />
+            <span className="text-gray-600">90% CI (Mean):</span>
+            <span className="font-medium text-gray-900">
+              [{formatValue(nearest.ciLower!.value)}, {formatValue(nearest.ciUpper!.value)}]
+            </span>
+          </div>
+          <div className="text-xs text-gray-400 ml-4">
+            90% probability the true mean lies in this range
+          </div>
+        </>
       )}
     </div>
   );
