@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type Ref } from 'react';
 import { parseDuration, formatDuration } from '../../lib/duration';
 
 interface DurationInputProps {
@@ -6,9 +6,22 @@ interface DurationInputProps {
   onChange: (value: string) => void;
   onParsed: (seconds: number | null) => void;
   disabled?: boolean;
+  ref?: Ref<HTMLInputElement>;
+  autoFocus?: boolean;
+  enterKeyHint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
+  large?: boolean;
 }
 
-export function DurationInput({ value, onChange, onParsed, disabled }: DurationInputProps) {
+export function DurationInput({
+  value,
+  onChange,
+  onParsed,
+  disabled,
+  ref,
+  autoFocus,
+  enterKeyHint,
+  large,
+}: DurationInputProps) {
   const [preview, setPreview] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
   const [isValid, setIsValid] = useState(true);
@@ -47,12 +60,18 @@ export function DurationInput({ value, onChange, onParsed, disabled }: DurationI
   return (
     <div>
       <input
+        ref={ref}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         placeholder="e.g. 1:23:45 or 90"
-        className={`w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:border-transparent ${
+        autoFocus={autoFocus}
+        enterKeyHint={enterKeyHint}
+        inputMode="numeric"
+        className={`w-full px-3 border rounded-md focus:outline-none focus:ring-2 focus:border-transparent ${
+          large ? 'py-3 text-base' : 'py-2 text-sm'
+        } ${
           disabled
             ? 'opacity-50 bg-gray-50 cursor-not-allowed'
             : isValid

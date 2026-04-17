@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { useDataStore } from '../../stores/dataStore';
 import { useQueueStore } from '../../stores/queueStore';
@@ -11,12 +11,20 @@ interface LogEntryFormProps {
   activity: Activity;
 }
 
+function nowParts() {
+  const n = new Date();
+  return {
+    date: format(n, 'yyyy-MM-dd'),
+    time: format(n, 'HH:mm'),
+  };
+}
+
 export function LogEntryForm({ activity }: LogEntryFormProps) {
   const createProgressLog = useDataStore((s) => s.createProgressLog);
-  const now = new Date();
+  const initial = nowParts();
 
-  const [date, setDate] = useState(format(now, 'yyyy-MM-dd'));
-  const [time, setTime] = useState(format(now, 'HH:mm'));
+  const [date, setDate] = useState(initial.date);
+  const [time, setTime] = useState(initial.time);
   const [valueInput, setValueInput] = useState('');
   const [parsedDuration, setParsedDuration] = useState<number | null>(null);
   const [bestOfAttempts, setBestOfAttempts] = useState('1');
@@ -24,9 +32,10 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
   const [parsedBestOfDuration, setParsedBestOfDuration] = useState<number | null>(null);
   const [inlineTypicalDuration, setInlineTypicalDuration] = useState('');
   const [parsedInlineTypicalDuration, setParsedInlineTypicalDuration] = useState<number | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<'saved' | 'queued' | null>(null);
+
+  const valueInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!flash) return;
@@ -36,6 +45,10 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
 
   const hasAttempts = bestOfAttempts.trim() !== '';
   const hasDuration = bestOfDurationInput.trim() !== '';
+
+  const current = nowParts();
+  const dateDiffersFromNow = date !== current.date;
+  const timeDiffersFromNow = time !== current.time;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,7 +100,6 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
       return;
     }
 
-    setIsSubmitting(true);
     try {
       await createProgressLog({
         activityId: activity.id,
@@ -100,18 +112,9 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
       setFlash(!isOnline || pending > 0 ? 'queued' : 'saved');
       setValueInput('');
       setParsedDuration(null);
-      setBestOfAttempts('1');
-      setBestOfDurationInput('');
-      setParsedBestOfDuration(null);
-      setInlineTypicalDuration('');
-      setParsedInlineTypicalDuration(null);
-      const n = new Date();
-      setDate(format(n, 'yyyy-MM-dd'));
-      setTime(format(n, 'HH:mm'));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to log entry');
-    } finally {
-      setIsSubmitting(false);
+      valueInputRef.current?.focus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to log entry');
     }
   };
 
@@ -119,41 +122,29 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
     <form onSubmit={handleSubmit} className="bg-white rounded-lg border border-gray-200 p-4">
       <h3 className="text-sm font-semibold text-gray-900 mb-3">Log Progress</h3>
 
-      <div className="grid grid-cols-2 gap-3 mb-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Time</label>
-          <input
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            required
-          />
-        </div>
-      </div>
-
       <div className="mb-3">
         <label className="block text-xs font-medium text-gray-600 mb-1">
           {activity.measurementType === 'duration' ? 'Duration' : 'Count'}
         </label>
         {activity.measurementType === 'duration' ? (
           <DurationInput
+            ref={valueInputRef}
             value={valueInput}
             onChange={setValueInput}
             onParsed={setParsedDuration}
+            autoFocus
+            enterKeyHint="done"
+            large
           />
         ) : (
-          <CountInput value={valueInput} onChange={setValueInput} />
+          <CountInput
+            ref={valueInputRef}
+            value={valueInput}
+            onChange={setValueInput}
+            autoFocus
+            enterKeyHint="done"
+            large
+          />
         )}
       </div>
 
@@ -229,6 +220,57 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
         )}
       </fieldset>
 
+      {/* Advanced — date/time collapsed by default */}
+      <details className="mb-3">
+        <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-700 select-none">
+          Advanced — change date or time
+        </summary>
+        <div className="grid grid-cols-2 gap-3 mt-2">
+          <div>
+            <div className="flex items-center justify-between mb-1 h-4">
+              <label className="text-xs font-medium text-gray-600">Date</label>
+              {dateDiffersFromNow && (
+                <button
+                  type="button"
+                  onClick={() => setDate(nowParts().date)}
+                  className="text-xs text-indigo-600 hover:text-indigo-800"
+                >
+                  Reset to now
+                </button>
+              )}
+            </div>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              required
+            />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1 h-4">
+              <label className="text-xs font-medium text-gray-600">Time</label>
+              {timeDiffersFromNow && (
+                <button
+                  type="button"
+                  onClick={() => setTime(nowParts().time)}
+                  className="text-xs text-indigo-600 hover:text-indigo-800"
+                >
+                  Reset to now
+                </button>
+              )}
+            </div>
+            <input
+              type="time"
+              value={time}
+              onChange={(e) => setTime(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              required
+            />
+          </div>
+        </div>
+      </details>
+
       {error && (
         <div className="text-sm text-red-600 bg-red-50 p-2 rounded-md mb-3">{error}</div>
       )}
@@ -247,10 +289,10 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
 
       <button
         type="submit"
-        disabled={isSubmitting || !valueInput}
-        className="w-full py-2 px-4 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        disabled={!valueInput.trim()}
+        className="w-full py-3 px-4 bg-indigo-600 text-white text-base font-medium rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
-        {isSubmitting ? 'Logging...' : 'Log Entry'}
+        Log Entry
       </button>
     </form>
   );
