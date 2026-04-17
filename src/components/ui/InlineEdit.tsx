@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 
 interface InlineEditProps {
   value: string;
-  onSave: (newValue: string) => Promise<void>;
+  onSave: (newValue: string) => Promise<unknown>;
   as?: 'h2' | 'p' | 'span';
   className?: string;
   inputType?: 'text' | 'textarea';

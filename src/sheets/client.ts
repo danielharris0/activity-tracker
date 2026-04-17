@@ -3,8 +3,12 @@ import { notifyAuthInvalidated } from './auth';
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 
 export class SheetsApiError extends Error {
-  constructor(public status: number, public body: unknown) {
+  status: number;
+  body: unknown;
+  constructor(status: number, body: unknown) {
     super(`Sheets API error ${status}: ${JSON.stringify(body)}`);
+    this.status = status;
+    this.body = body;
   }
 }
 
@@ -66,7 +70,7 @@ export function createSheetsClient(
       });
     },
 
-    async deleteRow(sheetName: string, sheetId: number, rowIndex: number): Promise<void> {
+    async deleteRow(_sheetName: string, sheetId: number, rowIndex: number): Promise<void> {
       const url = `${baseUrl}:batchUpdate`;
       await request(url, {
         method: 'POST',

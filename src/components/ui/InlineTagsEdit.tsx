@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 
 interface InlineTagsEditProps {
   tags: string[];
-  onSave: (newTags: string[]) => Promise<void>;
+  onSave: (newTags: string[]) => Promise<unknown>;
 }
 
 export function InlineTagsEdit({ tags, onSave }: InlineTagsEditProps) {
