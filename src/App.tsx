@@ -73,7 +73,7 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <ReconnectBanner />
       <Routes>
         <Route path="/" element={<Navigate to="/activities" replace />} />
