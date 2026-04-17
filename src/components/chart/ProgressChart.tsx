@@ -25,13 +25,12 @@ import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 
 interface ProgressChartProps {
   logs: LogEntry[];
-  activityId: string;
   activity: Activity;
 }
 
 const margin = { top: 10, right: 20, bottom: 30, left: 65 };
 
-export function ProgressChart({ logs, activityId, activity }: ProgressChartProps) {
+export function ProgressChart({ logs, activity }: ProgressChartProps) {
   const {
     enabledLayers,
     datePreset,
@@ -39,6 +38,16 @@ export function ProgressChart({ logs, activityId, activity }: ProgressChartProps
     kernelStdDevDays,
     cutoffThresholdPct,
   } = useChartConfigStore();
+
+  // `nowAnchor` freezes "now" for preset-relative windows. We re-anchor when
+  // the preset changes (via an effect, not during render) so Date.now() never
+  // runs in the render path. The setState-in-effect is intentional here: the
+  // only alternative — Date.now() in render — violates react-hooks/purity.
+  const [nowAnchor, setNowAnchor] = useState<number>(() => Date.now());
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNowAnchor(Date.now());
+  }, [datePreset]);
 
   // Committed view window. Always defined; drives both filtering and (when no
   // drag is active) the x-axis domain. Never changes mid-drag.
@@ -48,12 +57,10 @@ export function ProgressChart({ logs, activityId, activity }: ProgressChartProps
     }
     if (datePreset !== 'all') {
       const days = datePreset === '7d' ? 7 : datePreset === '30d' ? 30 : 90;
-      const endMs = Date.now();
-      return { startMs: endMs - days * 86_400_000, endMs };
+      return { startMs: nowAnchor - days * 86_400_000, endMs: nowAnchor };
     }
     if (logs.length === 0) {
-      const now = Date.now();
-      return { startMs: now - 30 * 86_400_000, endMs: now };
+      return { startMs: nowAnchor - 30 * 86_400_000, endMs: nowAnchor };
     }
     let min = Infinity;
     let max = -Infinity;
@@ -63,7 +70,7 @@ export function ProgressChart({ logs, activityId, activity }: ProgressChartProps
       if (ts > max) max = ts;
     }
     return { startMs: min, endMs: max + 1 };
-  }, [datePreset, customDateRange, logs]);
+  }, [datePreset, customDateRange, logs, nowAnchor]);
 
   const params = useMemo(() => ({
     kernelStdDevDays,
@@ -339,9 +346,13 @@ function ProgressChartInner({
   // stable across view-window updates so we don't re-bind on every render.
   const svgRef = useRef<SVGSVGElement | null>(null);
   const viewWindowRef = useRef(viewWindow);
-  viewWindowRef.current = viewWindow;
   const xScaleRef = useRef(xScale);
-  xScaleRef.current = xScale;
+  useEffect(() => {
+    viewWindowRef.current = viewWindow;
+  }, [viewWindow]);
+  useEffect(() => {
+    xScaleRef.current = xScale;
+  }, [xScale]);
 
   useEffect(() => {
     const svg = svgRef.current;

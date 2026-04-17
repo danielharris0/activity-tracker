@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type Ref } from 'react';
+import { useState, useEffect, useMemo, type Ref } from 'react';
 import { parseDuration, formatDuration } from '../../lib/duration';
 
 interface DurationInputProps {
@@ -22,40 +22,32 @@ export function DurationInput({
   enterKeyHint,
   large,
 }: DurationInputProps) {
-  const [preview, setPreview] = useState<string | null>(null);
-  const [visible, setVisible] = useState(false);
-  const [isValid, setIsValid] = useState(true);
-  const fadeTimer = useRef<ReturnType<typeof setTimeout>>();
-
-  // Parse live on every change
-  useEffect(() => {
-    if (!value.trim()) {
-      setPreview(null);
-      setVisible(false);
-      setIsValid(true);
-      onParsed(null);
-      return;
-    }
-
+  const parsed = useMemo(() => {
+    if (!value.trim()) return { preview: null, seconds: null, isValid: true };
     const seconds = parseDuration(value);
-    if (seconds !== null) {
-      setPreview(formatDuration(seconds));
-      setVisible(true);
-      setIsValid(true);
-      onParsed(seconds);
+    return seconds !== null
+      ? { preview: formatDuration(seconds), seconds, isValid: true }
+      : { preview: null, seconds: null, isValid: false };
+  }, [value]);
 
-      // Auto-fade after 2s of no typing
-      clearTimeout(fadeTimer.current);
-      fadeTimer.current = setTimeout(() => setVisible(false), 2000);
-    } else {
-      setPreview(null);
-      setVisible(false);
-      setIsValid(false);
-      onParsed(null);
-    }
+  const { preview, isValid } = parsed;
 
-    return () => clearTimeout(fadeTimer.current);
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    onParsed(parsed.seconds);
+  }, [parsed.seconds, onParsed]);
+
+  // Auto-fade the preview badge 2s after it appears. setVisible(true) runs
+  // from an effect body (flagged by react-hooks/set-state-in-effect) because
+  // the badge is a one-shot animation triggered by a prop transition — the
+  // natural place to kick it off is when `preview` changes.
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!preview) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVisible(true);
+    const timer = setTimeout(() => setVisible(false), 2000);
+    return () => clearTimeout(timer);
+  }, [preview]);
 
   return (
     <div>

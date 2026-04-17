@@ -1,19 +1,8 @@
-import { useRef, useMemo } from 'react';
+import { useMemo } from 'react';
 import type { LogEntry, Activity } from '../types/activity';
-import type { ChartLayerType, BayesianParams, BayesianEstimate } from '../types/statistics';
+import type { ChartLayerType, BayesianParams } from '../types/statistics';
 import type { BayesianChartPoint } from '../types/chart';
 import { prepareObservations, computeBayesianEstimates, generateEvalTimestamps, entryTimestamp } from '../lib/bayesian';
-
-interface CacheEntry {
-  entriesRef: LogEntry[];
-  paramsKey: string;
-  windowKey: string;
-  estimates: BayesianEstimate[];
-}
-
-function paramsToKey(params: BayesianParams, typicalAttemptDuration: number | undefined): string {
-  return `${params.kernelStdDevDays}|${params.cutoffThresholdPct}|${typicalAttemptDuration ?? ''}`;
-}
 
 // Note: because `window` is part of the cache key, panning (which commits a
 // new window) triggers a full re-run of prepareObservations, eval-timestamp
@@ -36,21 +25,7 @@ export function useChartData(
   params: BayesianParams,
   window: { startMs: number; endMs: number },
 ): BayesianChartPoint[] {
-  const cacheRef = useRef<CacheEntry | null>(null);
-
   const estimates = useMemo(() => {
-    const key = paramsToKey(params, activity.typicalAttemptDuration);
-    const windowKey = `${window.startMs}|${window.endMs}`;
-
-    if (
-      cacheRef.current &&
-      cacheRef.current.entriesRef === entries &&
-      cacheRef.current.paramsKey === key &&
-      cacheRef.current.windowKey === windowKey
-    ) {
-      return cacheRef.current.estimates;
-    }
-
     const observations = prepareObservations(
       entries,
       activity.typicalAttemptDuration,
@@ -62,10 +37,7 @@ export function useChartData(
       startMs: window.startMs - overscan,
       endMs: window.endMs + overscan,
     });
-    const result = computeBayesianEstimates(observations, params, evalTimestamps);
-
-    cacheRef.current = { entriesRef: entries, paramsKey: key, windowKey, estimates: result };
-    return result;
+    return computeBayesianEstimates(observations, params, evalTimestamps);
   }, [entries, activity.typicalAttemptDuration, params, window.startMs, window.endMs]);
 
   const chartData = useMemo(() => {
