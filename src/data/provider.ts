@@ -8,7 +8,7 @@ export interface DataProvider {
   deleteActivity(id: string): Promise<void>;
 
   createProgressLog(
-    data: Omit<LogEntry, 'id' | 'createdAt'>,
+    data: LogEntry,
     measurementType: MeasurementType
   ): Promise<LogEntry>;
 }

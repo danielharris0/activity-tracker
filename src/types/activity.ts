@@ -14,12 +14,9 @@ export interface Activity {
 }
 
 export interface LogEntry {
-  id?: string;
   activityId: string;
   date: string;       // "YYYY-MM-DD"
   time: string;       // "HH:mm"
   value: number;      // integer for count, total seconds for duration
-  notes: string;
-  createdAt?: string; // ISO 8601 (legacy, no longer written)
-  bestOf?: BestOfData;
+  bestOf: BestOfData;
 }

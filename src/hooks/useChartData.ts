@@ -12,7 +12,7 @@ interface CacheEntry {
 }
 
 function paramsToKey(params: BayesianParams, typicalAttemptDuration: number | undefined): string {
-  return `${params.kernelStdDevDays}|${params.cutoffThresholdPct}|${params.missingBestOf}|${typicalAttemptDuration ?? ''}`;
+  return `${params.kernelStdDevDays}|${params.cutoffThresholdPct}|${typicalAttemptDuration ?? ''}`;
 }
 
 // Note: because `window` is part of the cache key, panning (which commits a
@@ -54,7 +54,6 @@ export function useChartData(
     const observations = prepareObservations(
       entries,
       activity.typicalAttemptDuration,
-      params.missingBestOf,
     );
 
     const span = window.endMs - window.startMs;

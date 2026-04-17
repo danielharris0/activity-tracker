@@ -38,7 +38,6 @@ export function ProgressChart({ logs, activityId, activity }: ProgressChartProps
     customDateRange,
     kernelStdDevDays,
     cutoffThresholdPct,
-    missingBestOf,
   } = useChartConfigStore();
 
   // Committed view window. Always defined; drives both filtering and (when no
@@ -69,20 +68,9 @@ export function ProgressChart({ logs, activityId, activity }: ProgressChartProps
   const params = useMemo(() => ({
     kernelStdDevDays,
     cutoffThresholdPct,
-    missingBestOf,
-  }), [kernelStdDevDays, cutoffThresholdPct, missingBestOf]);
+  }), [kernelStdDevDays, cutoffThresholdPct]);
 
-  // All logs are kept for the Bayesian computation so that panning the view
-  // never changes which observations contribute to the estimate. The window
-  // only scopes where eval timestamps are generated.
-  const rawEntries = useMemo(() => {
-    if (missingBestOf === 'exclude') {
-      return logs.filter(e => e.bestOf != null);
-    }
-    return logs;
-  }, [logs, missingBestOf]);
-
-  const chartData = useChartData(rawEntries, activity, enabledLayers, params, baseWindow);
+  const chartData = useChartData(logs, activity, enabledLayers, params, baseWindow);
 
   const showDebugTable = useChartConfigStore(s => s.showDebugTable);
   const toggleDebugTable = useChartConfigStore(s => s.toggleDebugTable);
@@ -92,9 +80,9 @@ export function ProgressChart({ logs, activityId, activity }: ProgressChartProps
   // Observation timestamps are now eval timestamps, so no snapping needed.
   const debugData = useMemo(() => {
     if (!showDebugTable || debugTimestamp == null) return null;
-    const observations = prepareObservations(rawEntries, activity.typicalAttemptDuration, missingBestOf);
+    const observations = prepareObservations(logs, activity.typicalAttemptDuration);
     return computeBayesianDebugAtTimestamp(observations, params, debugTimestamp);
-  }, [showDebugTable, debugTimestamp, rawEntries, activity.typicalAttemptDuration, missingBestOf, params]);
+  }, [showDebugTable, debugTimestamp, logs, activity.typicalAttemptDuration, params]);
 
   return (
     <div className="space-y-4">
@@ -112,7 +100,7 @@ export function ProgressChart({ logs, activityId, activity }: ProgressChartProps
               height={350}
               chartData={chartData}
               activity={activity}
-              rawEntries={rawEntries}
+              rawEntries={logs}
               enabledLayers={enabledLayers}
               kernelStdDevDays={kernelStdDevDays}
               cutoffThresholdPct={cutoffThresholdPct}

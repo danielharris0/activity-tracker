@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ChartLayerType, MissingBestOfHandling } from '../types/statistics';
+import type { ChartLayerType } from '../types/statistics';
 import { LAYERS } from '../constants/statistics';
 
 export type DatePreset = '7d' | '30d' | '90d' | 'all' | 'custom';
@@ -13,7 +13,6 @@ interface ChartConfigState {
   enabledLayers: Set<ChartLayerType>;
   kernelStdDevDays: number;
   cutoffThresholdPct: number;
-  missingBestOf: MissingBestOfHandling;
   datePreset: DatePreset;
   customDateRange: CustomDateRange | null;
   showDebugTable: boolean;
@@ -21,7 +20,6 @@ interface ChartConfigState {
   toggleLayer: (type: ChartLayerType) => void;
   setKernelStdDevDays: (days: number) => void;
   setCutoffThresholdPct: (pct: number) => void;
-  setMissingBestOf: (handling: MissingBestOfHandling) => void;
   setDatePreset: (preset: DatePreset) => void;
   setCustomDateRange: (start: string, end: string) => void;
   setCustomDateRangeFromTimestamps: (startMs: number, endMs: number) => void;
@@ -42,7 +40,6 @@ export const useChartConfigStore = create<ChartConfigState>((set) => ({
   enabledLayers: defaultEnabled,
   kernelStdDevDays: 7,
   cutoffThresholdPct: 5,
-  missingBestOf: 'treat-as-1',
   datePreset: 'all',
   customDateRange: null,
   showDebugTable: false,
@@ -60,7 +57,6 @@ export const useChartConfigStore = create<ChartConfigState>((set) => ({
 
   setKernelStdDevDays: (days) => set({ kernelStdDevDays: days }),
   setCutoffThresholdPct: (pct) => set({ cutoffThresholdPct: pct }),
-  setMissingBestOf: (handling) => set({ missingBestOf: handling }),
   setDatePreset: (preset) => set({ datePreset: preset, customDateRange: null }),
   setCustomDateRange: (start, end) =>
     set({

@@ -6,13 +6,9 @@
 
 - Restyle the UI. Less animation. Sharper corners. Bolder colours. More padding on the sidebar activity list.
 
-- Remove progress log notes field
-
-- Pan doesn't work
-
 ## Easier mobile use
 - Publish on git sites
-- Polish mobile interface
+- Polish mobile interface -- make it simple to log many best-of-1 measurements with as few clicks as possible
 - Offline caching of data edit requests which are synced when back online.
 
 - Move "log progress" above the graph

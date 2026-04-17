@@ -22,10 +22,9 @@ export async function getProgressLogs(
 
 export async function createProgressLog(
   client: SheetsClient,
-  data: Omit<LogEntry, 'id' | 'createdAt'>,
+  data: LogEntry,
   measurementType: MeasurementType
 ): Promise<LogEntry> {
-  const log: LogEntry = { ...data };
-  await client.appendValues('Progress!A:H', [progressLogToRow(log, measurementType)]);
-  return log;
+  await client.appendValues('Progress!A:G', [progressLogToRow(data, measurementType)]);
+  return data;
 }

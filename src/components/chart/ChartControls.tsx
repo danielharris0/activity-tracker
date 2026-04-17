@@ -1,6 +1,5 @@
 import { useChartConfigStore } from '../../stores/chartConfigStore';
 import { LAYERS } from '../../constants/statistics';
-import type { MissingBestOfHandling } from '../../types/statistics';
 
 const KERNEL_MIN_DAYS = 0.01;
 const KERNEL_MAX_DAYS = 60;
@@ -30,11 +29,9 @@ export function ChartControls() {
     enabledLayers,
     kernelStdDevDays,
     cutoffThresholdPct,
-    missingBestOf,
     toggleLayer,
     setKernelStdDevDays,
     setCutoffThresholdPct,
-    setMissingBestOf,
   } = useChartConfigStore();
 
   return (
@@ -92,18 +89,6 @@ export function ChartControls() {
             className="flex-1"
           />
           <span className="text-xs text-gray-600 w-10 text-right">{cutoffThresholdPct}%</span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <label className="text-xs font-medium text-gray-500 w-28 shrink-0">No best-of:</label>
-          <select
-            value={missingBestOf}
-            onChange={(e) => setMissingBestOf(e.target.value as MissingBestOfHandling)}
-            className="text-xs border border-gray-300 rounded px-2 py-1"
-          >
-            <option value="treat-as-1">Treat as single attempt</option>
-            <option value="exclude">Exclude from analysis</option>
-          </select>
         </div>
 
       </div>

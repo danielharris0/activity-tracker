@@ -13,7 +13,7 @@ interface DataState {
   createActivity(data: Omit<Activity, 'id'>): Promise<Activity>;
   updateActivity(id: string, updates: Partial<Omit<Activity, 'id'>>): Promise<Activity>;
   deleteActivity(id: string): Promise<void>;
-  createProgressLog(data: Omit<LogEntry, 'id' | 'createdAt'>): Promise<LogEntry>;
+  createProgressLog(data: LogEntry): Promise<LogEntry>;
 }
 
 function requireProvider(): DataProvider {

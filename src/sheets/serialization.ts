@@ -40,30 +40,25 @@ export function rowToActivity(row: string[], colMap: Map<string, number>): Activ
 
 // --- Progress logs ---
 
-export const PROGRESS_HEADERS = ['activityId', 'date', 'time', 'value', 'notes', 'bestOfType', 'bestOfValue', 'bestOfTypicalDuration'];
+export const PROGRESS_HEADERS = ['activityId', 'date', 'time', 'value', 'bestOfType', 'bestOfValue', 'bestOfTypicalDuration'];
 
 export function progressLogToRow(log: LogEntry, measurementType: MeasurementType): string[] {
   const valueStr = measurementType === 'duration'
     ? formatDurationForSheet(log.value)
     : String(log.value);
 
-  let bestOfType = '';
-  let bestOfValue = '';
-  let bestOfTypicalDuration = '';
-  if (log.bestOf) {
-    bestOfType = log.bestOf.type;
-    bestOfValue = String(log.bestOf.type === 'attempts' ? log.bestOf.count : log.bestOf.seconds);
-    if (log.bestOf.type === 'duration' && log.bestOf.typicalAttemptDuration != null) {
-      bestOfTypicalDuration = String(log.bestOf.typicalAttemptDuration);
-    }
-  }
+  const bestOfType = log.bestOf.type;
+  const bestOfValue = String(log.bestOf.type === 'attempts' ? log.bestOf.count : log.bestOf.seconds);
+  const bestOfTypicalDuration =
+    log.bestOf.type === 'duration' && log.bestOf.typicalAttemptDuration != null
+      ? String(log.bestOf.typicalAttemptDuration)
+      : '';
 
   return [
     log.activityId,
     log.date,
     log.time,
     valueStr,
-    log.notes,
     bestOfType,
     bestOfValue,
     bestOfTypicalDuration,
@@ -81,7 +76,7 @@ export function rowToProgressLog(
     ? (parseDuration(rawValue) ?? 0)
     : parseInt(rawValue, 10) || 0;
 
-  let bestOf: BestOfData | undefined;
+  let bestOf: BestOfData = { type: 'attempts', count: 1 };
   const boType = get('bestoftype');
   const boValue = get('bestofvalue');
   if (boType === 'attempts' && boValue) {
@@ -101,13 +96,10 @@ export function rowToProgressLog(
   }
 
   return {
-    ...(get('id') ? { id: get('id') } : {}),
     activityId: get('activityid'),
     date: get('date'),
     time: get('time'),
     value,
-    notes: get('notes'),
-    ...(get('createdat') ? { createdAt: get('createdat') } : {}),
-    ...(bestOf ? { bestOf } : {}),
+    bestOf,
   };
 }

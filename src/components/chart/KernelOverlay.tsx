@@ -88,7 +88,7 @@ export function KernelOverlay({
     const cy = yScale(entry.value);
     if (cx < 0 || cx > innerWidth || cy < 0 || cy > innerHeight) continue;
 
-    const point = { key: entry.id, cx, cy };
+    const point = { key: String(ts), cx, cy };
     if (ts === hoveredTimestamp) {
       hoveredHighlight = point;
     } else {

@@ -1,5 +1,5 @@
 import type { LogEntry } from '../types/activity';
-import type { BayesianEstimate, BayesianParams, BayesianDebugData, MarginalEntry, MissingBestOfHandling } from '../types/statistics';
+import type { BayesianEstimate, BayesianParams, BayesianDebugData, MarginalEntry } from '../types/statistics';
 import { logNormalPdf, logNormalCdf } from './normal';
 import { makeRange, uniformSamples } from './timeRange';
 
@@ -67,28 +67,22 @@ export function computeKernelAtPoint(
 export function prepareObservations(
   entries: LogEntry[],
   typicalAttemptDuration: number | undefined,
-  missingBestOf: MissingBestOfHandling,
 ): Observation[] {
   const observations: Observation[] = [];
 
   for (const entry of entries) {
     let effectiveN: number;
 
-    if (entry.bestOf) {
-      if (entry.bestOf.type === 'attempts') {
-        effectiveN = Math.max(1, entry.bestOf.count);
-      } else {
-        // duration-based best-of: prefer per-entry override, then activity-level
-        const tad = entry.bestOf.typicalAttemptDuration ?? typicalAttemptDuration;
-        if (tad && tad > 0) {
-          effectiveN = Math.max(1, Math.floor(entry.bestOf.seconds / tad));
-        } else {
-          effectiveN = 1; // can't convert without typical duration
-        }
-      }
+    if (entry.bestOf.type === 'attempts') {
+      effectiveN = Math.max(1, entry.bestOf.count);
     } else {
-      if (missingBestOf === 'exclude') continue;
-      effectiveN = 1;
+      // duration-based best-of: prefer per-entry override, then activity-level
+      const tad = entry.bestOf.typicalAttemptDuration ?? typicalAttemptDuration;
+      if (tad && tad > 0) {
+        effectiveN = Math.max(1, Math.floor(entry.bestOf.seconds / tad));
+      } else {
+        effectiveN = 1; // can't convert without typical duration
+      }
     }
 
     observations.push({

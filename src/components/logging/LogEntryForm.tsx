@@ -18,8 +18,7 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
   const [time, setTime] = useState(format(now, 'HH:mm'));
   const [valueInput, setValueInput] = useState('');
   const [parsedDuration, setParsedDuration] = useState<number | null>(null);
-  const [notes, setNotes] = useState('');
-  const [bestOfAttempts, setBestOfAttempts] = useState('');
+  const [bestOfAttempts, setBestOfAttempts] = useState('1');
   const [bestOfDurationInput, setBestOfDurationInput] = useState('');
   const [parsedBestOfDuration, setParsedBestOfDuration] = useState<number | null>(null);
   const [inlineTypicalDuration, setInlineTypicalDuration] = useState('');
@@ -51,7 +50,7 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
       value = num;
     }
 
-    let bestOf: BestOfData | undefined;
+    let bestOf: BestOfData;
     if (hasAttempts) {
       const count = parseInt(bestOfAttempts, 10);
       if (isNaN(count) || count < 1) {
@@ -65,7 +64,6 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
         setError('Please enter a valid session duration');
         return;
       }
-      // If activity has no typical duration, require inline entry
       if (!activity.typicalAttemptDuration) {
         const typicalSecs = parsedInlineTypicalDuration ?? parseDuration(inlineTypicalDuration);
         if (!typicalSecs || typicalSecs <= 0) {
@@ -76,6 +74,9 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
       } else {
         bestOf = { type: 'duration', seconds };
       }
+    } else {
+      setError('Please enter either a number of attempts or a session duration');
+      return;
     }
 
     setIsSubmitting(true);
@@ -85,13 +86,11 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
         date,
         time,
         value,
-        notes,
-        ...(bestOf ? { bestOf } : {}),
+        bestOf,
       });
       setValueInput('');
       setParsedDuration(null);
-      setNotes('');
-      setBestOfAttempts('');
+      setBestOfAttempts('1');
       setBestOfDurationInput('');
       setParsedBestOfDuration(null);
       setInlineTypicalDuration('');
@@ -148,9 +147,9 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
         )}
       </div>
 
-      {/* Best-of section — two always-visible fields */}
+      {/* Best-of section — either number of attempts or session duration is required */}
       <fieldset className="mb-3">
-        <legend className="text-xs font-medium text-gray-600 mb-1">Best of (optional)</legend>
+        <legend className="text-xs font-medium text-gray-600 mb-1">Best of</legend>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Session duration</label>
@@ -219,17 +218,6 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
           </div>
         )}
       </fieldset>
-
-      <div className="mb-3">
-        <label className="block text-xs font-medium text-gray-600 mb-1">Notes (optional)</label>
-        <input
-          type="text"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="e.g. Felt strong today"
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-        />
-      </div>
 
       {error && (
         <div className="text-sm text-red-600 bg-red-50 p-2 rounded-md mb-3">{error}</div>
