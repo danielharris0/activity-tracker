@@ -28,7 +28,7 @@ export function CustomTooltip({ cursorTimestamp, nearest, measurementType }: Cus
   const seriesKeys: SeriesKey[] = ['raw', 'mean', 'stddev'];
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 max-w-[280px]">
       <p className="text-xs text-gray-500 mb-1">
         {format(new Date(cursorTimestamp), 'MMM d, yyyy HH:mm')}
       </p>

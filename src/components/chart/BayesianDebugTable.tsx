@@ -83,8 +83,8 @@ function MarginalTable({
       <p className="text-xs text-gray-400 mb-2">
         Rank 1 below is the posterior mode (most probable single value), which may differ from the mean plotted on the graph.
       </p>
-      <div className="overflow-auto max-h-64">
-        <table className="w-full text-xs">
+      <div className="overflow-x-auto overflow-y-auto max-h-64">
+        <table className="w-full min-w-[28rem] text-xs">
           <thead>
             <tr className="border-b border-gray-200">
               <th className="text-left py-1 pr-3 text-gray-500 font-medium">Rank</th>
@@ -192,8 +192,8 @@ export function BayesianDebugTable({ debug, measurementType }: BayesianDebugTabl
           <p className="text-xs text-gray-500 mb-2">
             Only highlighted rows (above cutoff) are used in the posterior computation.
           </p>
-          <div className="overflow-auto max-h-64">
-            <table className="w-full text-xs">
+          <div className="overflow-x-auto overflow-y-auto max-h-64">
+            <table className="w-full min-w-[28rem] text-xs">
               <thead>
                 <tr className="border-b border-gray-200">
                   <th className="text-left py-1 pr-3 text-gray-500 font-medium">Date</th>

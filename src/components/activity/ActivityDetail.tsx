@@ -83,10 +83,10 @@ export function ActivityDetail() {
         </div>
 
         {/* Typical attempt duration */}
-        <div className="mt-2 flex items-center gap-2 text-xs">
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
           <span className="text-gray-500">Typical attempt duration:</span>
           {editingDuration ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <DurationInput
                 value={durationInput}
                 onChange={setDurationInput}

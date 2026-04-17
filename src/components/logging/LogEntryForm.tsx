@@ -151,7 +151,7 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
       {/* Best-of section — either number of attempts or session duration is required */}
       <fieldset className="mb-3">
         <legend className="text-xs font-medium text-gray-600 mb-1">Best of</legend>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Session duration</label>
             <div className="relative">
@@ -225,7 +225,7 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
         <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-700 select-none">
           Advanced — change date or time
         </summary>
-        <div className="grid grid-cols-2 gap-3 mt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
           <div>
             <div className="flex items-center justify-between mb-1 h-4">
               <label className="text-xs font-medium text-gray-600">Date</label>

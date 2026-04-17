@@ -23,7 +23,7 @@ export function QueueStatusBadge() {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 flex-wrap justify-end">
       {pending > 0 && isOnline && (
         <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
           <span className={`h-1.5 w-1.5 rounded-full bg-amber-500 ${isSyncing ? 'animate-pulse' : ''}`} />

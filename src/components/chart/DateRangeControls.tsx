@@ -58,23 +58,23 @@ export function DateRangeControls() {
       </div>
 
       {datePreset === 'custom' && customDateRange && (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <input
             type="date"
             value={msToDateStr(customDateRange.startMs)}
             onChange={(e) =>
               setCustomDateRange(e.target.value, msToDateStr(customDateRange.endMs - DAY_MS))
             }
-            className="px-2 py-1 border border-gray-300 rounded text-xs"
+            className="w-full sm:w-auto px-2 py-1 border border-gray-300 rounded text-xs"
           />
-          <span className="text-xs text-gray-500">to</span>
+          <span className="hidden sm:inline text-xs text-gray-500">to</span>
           <input
             type="date"
             value={msToDateStr(customDateRange.endMs - DAY_MS)}
             onChange={(e) =>
               setCustomDateRange(msToDateStr(customDateRange.startMs), e.target.value)
             }
-            className="px-2 py-1 border border-gray-300 rounded text-xs"
+            className="w-full sm:w-auto px-2 py-1 border border-gray-300 rounded text-xs"
           />
         </div>
       )}

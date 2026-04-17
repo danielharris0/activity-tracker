@@ -52,7 +52,7 @@ export function InlineTagsEdit({ tags, onSave }: InlineTagsEditProps) {
   if (editing) {
     return (
       <div className="space-y-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             ref={inputRef}
             type="text"
@@ -61,19 +61,19 @@ export function InlineTagsEdit({ tags, onSave }: InlineTagsEditProps) {
             onKeyDown={handleKeyDown}
             placeholder="tag1, tag2, tag3"
             disabled={saving}
-            className="flex-1 px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50"
+            className="flex-1 min-w-[10rem] px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:opacity-50"
           />
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-2 py-1 bg-indigo-600 text-white rounded text-xs font-medium disabled:opacity-50 shrink-0"
+            className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium disabled:opacity-50 shrink-0"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
           <button
             onClick={() => { setEditing(false); setError(null); }}
             disabled={saving}
-            className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-medium disabled:opacity-50 shrink-0"
+            className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded text-xs font-medium disabled:opacity-50 shrink-0"
           >
             Cancel
           </button>

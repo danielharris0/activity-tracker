@@ -31,9 +31,9 @@ export function ConnectionSetup({ onConnect, isConnecting, error }: ConnectionSe
             <li>Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline">Google Cloud Console</a> and create or select a project.</li>
             <li>Enable the <a href="https://console.cloud.google.com/apis/library/sheets.googleapis.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline">Google Sheets API</a> for your project.</li>
             <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline">Credentials</a> and create an <strong>OAuth 2.0 Client ID</strong>:
-              <ul className="ml-4 mt-1 space-y-0.5 list-disc list-inside">
+              <ul className="ml-2 sm:ml-4 mt-1 space-y-0.5 list-disc list-inside">
                 <li>Application type: <strong>Web application</strong> (not Desktop)</li>
-                <li>Authorized JavaScript origins: <code className="bg-gray-100 px-1 rounded">http://localhost:5173</code></li>
+                <li className="break-words">Authorized JavaScript origins: <code className="bg-gray-100 px-1 rounded break-all">http://localhost:5173</code></li>
               </ul>
             </li>
             <li>Create a new Google Sheets spreadsheet (or use an existing one). The app will create the required tabs automatically.</li>

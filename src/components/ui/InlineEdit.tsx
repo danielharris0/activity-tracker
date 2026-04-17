@@ -70,7 +70,7 @@ export function InlineEdit({
   if (editing) {
     return (
       <div className="space-y-1">
-        <div className="flex items-start gap-2">
+        <div className="flex flex-wrap items-start gap-2">
           {inputType === 'textarea' ? (
             <textarea
               ref={inputRef as React.RefObject<HTMLTextAreaElement>}
@@ -97,14 +97,14 @@ export function InlineEdit({
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-2 py-1 bg-indigo-600 text-white rounded text-xs font-medium disabled:opacity-50 shrink-0"
+            className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium disabled:opacity-50 shrink-0"
           >
             {saving ? 'Saving...' : 'Save'}
           </button>
           <button
             onClick={() => { setEditing(false); setError(null); }}
             disabled={saving}
-            className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-medium disabled:opacity-50 shrink-0"
+            className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded text-xs font-medium disabled:opacity-50 shrink-0"
           >
             Cancel
           </button>

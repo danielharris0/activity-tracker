@@ -61,8 +61,8 @@ export function ChartControls() {
 
       {/* Bayesian parameters */}
       <div className="space-y-2 border-t border-gray-100 pt-2">
-        <div className="flex items-center gap-3">
-          <label className="text-xs font-medium text-gray-500 w-28 shrink-0">Kernel width:</label>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <label className="text-xs font-medium text-gray-500 w-20 sm:w-28 shrink-0">Kernel width:</label>
           <input
             type="range"
             min={0}
@@ -70,15 +70,15 @@ export function ChartControls() {
             step={1}
             value={daysToSlider(kernelStdDevDays)}
             onChange={(e) => setKernelStdDevDays(sliderToDays(Number(e.target.value)))}
-            className="flex-1"
+            className="flex-1 min-w-0"
           />
-          <span className="text-xs text-gray-600 w-12 text-right tabular-nums">
+          <span className="text-xs text-gray-600 w-12 text-right tabular-nums shrink-0">
             {formatKernelWidth(kernelStdDevDays)}
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
-          <label className="text-xs font-medium text-gray-500 w-28 shrink-0">Cutoff:</label>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <label className="text-xs font-medium text-gray-500 w-20 sm:w-28 shrink-0">Cutoff:</label>
           <input
             type="range"
             min={1}
@@ -86,9 +86,9 @@ export function ChartControls() {
             step={1}
             value={cutoffThresholdPct}
             onChange={(e) => setCutoffThresholdPct(Number(e.target.value))}
-            className="flex-1"
+            className="flex-1 min-w-0"
           />
-          <span className="text-xs text-gray-600 w-10 text-right">{cutoffThresholdPct}%</span>
+          <span className="text-xs text-gray-600 w-10 text-right shrink-0">{cutoffThresholdPct}%</span>
         </div>
 
       </div>
