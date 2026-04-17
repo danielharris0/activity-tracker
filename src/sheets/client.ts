@@ -1,3 +1,5 @@
+import { notifyAuthInvalidated } from './auth';
+
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 
 export class SheetsApiError extends Error {
@@ -32,6 +34,9 @@ export function createSheetsClient(
     });
     if (!res.ok) {
       const error = await res.json().catch(() => ({}));
+      if (res.status === 401 || res.status === 403) {
+        notifyAuthInvalidated();
+      }
       throw new SheetsApiError(res.status, error);
     }
     const text = await res.text();

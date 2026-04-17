@@ -1,28 +1,33 @@
-import type { DataProvider } from './provider';
+import type { InnerDataProvider } from './provider';
 import type { LogEntry } from '../types/activity';
-import { createSheetsClient } from '../sheets/client';
-import { connect, getAccessToken } from '../sheets/auth';
+import { createSheetsClient, SheetsApiError } from '../sheets/client';
+import { getAccessToken } from '../sheets/auth';
 import { ensureSheetsExist } from '../sheets/init';
 import * as activitiesApi from '../sheets/activities';
 import * as progressApi from '../sheets/progress';
 import { buildColumnMap, rowToProgressLog } from '../sheets/serialization';
 
 export async function createSheetsProvider(
-  clientId: string,
   spreadsheetId: string
-): Promise<DataProvider> {
-  await connect(clientId);
-
+): Promise<InnerDataProvider> {
   const client = createSheetsClient(spreadsheetId, () => {
     const token = getAccessToken();
-    if (!token) throw new Error('No access token available');
+    if (!token) throw new SheetsApiError(401, { error: 'No access token' });
     return token;
   });
 
-  const { activitiesSheetId } = await ensureSheetsExist(client);
+  let activitiesSheetId: number | null = null;
+  async function getActivitiesSheetId(): Promise<number> {
+    if (activitiesSheetId == null) {
+      const ids = await ensureSheetsExist(client);
+      activitiesSheetId = ids.activitiesSheetId;
+    }
+    return activitiesSheetId;
+  }
 
   return {
     async loadAll() {
+      await getActivitiesSheetId();
       const activities = await activitiesApi.getActivities(client);
 
       const mtByActivityId = new Map(
@@ -47,11 +52,13 @@ export async function createSheetsProvider(
       return { activities, logs };
     },
 
-    createActivity: (data) => activitiesApi.createActivity(client, data),
+    createActivity: (activity) => activitiesApi.createActivity(client, activity),
     updateActivity: (id, updates) =>
       activitiesApi.updateActivity(client, id, updates),
-    deleteActivity: (id) =>
-      activitiesApi.deleteActivity(client, id, activitiesSheetId),
+    async deleteActivity(id) {
+      const sheetId = await getActivitiesSheetId();
+      return activitiesApi.deleteActivity(client, id, sheetId);
+    },
 
     createProgressLog: (data, measurementType) =>
       progressApi.createProgressLog(client, data, measurementType),

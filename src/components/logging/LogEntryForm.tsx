@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { useDataStore } from '../../stores/dataStore';
+import { useQueueStore } from '../../stores/queueStore';
 import type { Activity, BestOfData } from '../../types/activity';
 import { parseDuration } from '../../lib/duration';
 import { DurationInput } from './DurationInput';
@@ -25,6 +26,13 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
   const [parsedInlineTypicalDuration, setParsedInlineTypicalDuration] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [flash, setFlash] = useState<'saved' | 'queued' | null>(null);
+
+  useEffect(() => {
+    if (!flash) return;
+    const t = setTimeout(() => setFlash(null), 1500);
+    return () => clearTimeout(t);
+  }, [flash]);
 
   const hasAttempts = bestOfAttempts.trim() !== '';
   const hasDuration = bestOfDurationInput.trim() !== '';
@@ -88,6 +96,8 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
         value,
         bestOf,
       });
+      const { isOnline, pending } = useQueueStore.getState();
+      setFlash(!isOnline || pending > 0 ? 'queued' : 'saved');
       setValueInput('');
       setParsedDuration(null);
       setBestOfAttempts('1');
@@ -221,6 +231,18 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
 
       {error && (
         <div className="text-sm text-red-600 bg-red-50 p-2 rounded-md mb-3">{error}</div>
+      )}
+
+      {flash && (
+        <div
+          className={`text-sm p-2 rounded-md mb-3 ${
+            flash === 'saved'
+              ? 'text-green-700 bg-green-50'
+              : 'text-amber-800 bg-amber-50'
+          }`}
+        >
+          {flash === 'saved' ? 'Saved' : 'Queued — will sync when online'}
+        </div>
       )}
 
       <button

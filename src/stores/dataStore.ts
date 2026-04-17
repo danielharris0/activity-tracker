@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import type { Activity, LogEntry } from '../types/activity';
 import type { DataProvider } from '../data/provider';
+import type { QueuedProvider } from '../data/queue/queuedProvider';
 
 let provider: DataProvider | null = null;
+let snapshotUnsubscribe: (() => void) | null = null;
 
 interface DataState {
   activities: Activity[];
@@ -21,6 +23,10 @@ function requireProvider(): DataProvider {
   return provider;
 }
 
+function hasSnapshotSubscribe(p: DataProvider): p is QueuedProvider {
+  return typeof (p as QueuedProvider).subscribeSnapshot === 'function';
+}
+
 export const useDataStore = create<DataState>((set, get) => ({
   activities: [],
   logs: [],
@@ -28,8 +34,17 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   async init(p) {
     provider = p;
+    snapshotUnsubscribe?.();
+    snapshotUnsubscribe = null;
+
     const { activities, logs } = await p.loadAll();
     set({ activities, logs, isLoaded: true });
+
+    if (hasSnapshotSubscribe(p)) {
+      snapshotUnsubscribe = p.subscribeSnapshot((snapshot) => {
+        set({ activities: snapshot.activities, logs: snapshot.logs });
+      });
+    }
   },
 
   async createActivity(data) {
@@ -50,7 +65,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     await requireProvider().deleteActivity(id);
     set((s) => ({
       activities: s.activities.filter((a) => a.id !== id),
-      progressLogs: s.logs.filter((l) => l.activityId !== id),
+      logs: s.logs.filter((l) => l.activityId !== id),
     }));
   },
 

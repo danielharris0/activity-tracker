@@ -105,3 +105,10 @@ export function disconnect(): void {
   sessionStorage.removeItem(TOKEN_KEY);
   sessionStorage.removeItem(EXPIRY_KEY);
 }
+
+export function notifyAuthInvalidated(): void {
+  accessToken = null;
+  tokenExpiry = 0;
+  sessionStorage.removeItem(TOKEN_KEY);
+  sessionStorage.removeItem(EXPIRY_KEY);
+}

@@ -1,4 +1,3 @@
-import { nanoid } from 'nanoid';
 import type { SheetsClient } from './client';
 import type { Activity } from '../types/activity';
 import { activityToRow, rowToActivity, buildColumnMap } from './serialization';
@@ -13,12 +12,8 @@ export async function getActivities(client: SheetsClient): Promise<Activity[]> {
 
 export async function createActivity(
   client: SheetsClient,
-  data: Omit<Activity, 'id'>
+  activity: Activity
 ): Promise<Activity> {
-  const activity: Activity = {
-    ...data,
-    id: nanoid(8),
-  };
   await client.appendValues('Activities!A:F', [activityToRow(activity)]);
   return activity;
 }
