@@ -5,6 +5,7 @@ import { useActivityLogs } from '../../hooks/useActivityLogs';
 import { useDataStore } from '../../stores/dataStore';
 import { LogEntryForm } from '../logging/LogEntryForm';
 import { ProgressChart } from '../chart/ProgressChart';
+import { CurrentEstimateIndicators } from '../chart/CurrentEstimateIndicators';
 import { formatDuration, parseDuration } from '../../lib/duration';
 import { DurationInput } from '../logging/DurationInput';
 import { InlineEdit } from '../ui/InlineEdit';
@@ -128,6 +129,17 @@ export function ActivityDetail() {
         </div>
       </div>
 
+      {/* Log form */}
+      <div className="max-w-lg">
+        <LogEntryForm activity={activity} />
+      </div>
+
+      {/* Current estimate */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">Current estimate</h3>
+        <CurrentEstimateIndicators logs={logs} activity={activity} />
+      </div>
+
       {/* Chart */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Progress</h3>
@@ -135,11 +147,6 @@ export function ActivityDetail() {
           logs={logs}
           activity={activity}
         />
-      </div>
-
-      {/* Log form */}
-      <div className="max-w-lg">
-        <LogEntryForm activity={activity} />
       </div>
     </div>
   );
