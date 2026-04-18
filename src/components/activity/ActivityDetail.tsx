@@ -10,6 +10,7 @@ import { formatDuration, parseDuration } from '../../lib/duration';
 import { DurationInput } from '../logging/DurationInput';
 import { InlineEdit } from '../ui/InlineEdit';
 import { InlineTagsEdit } from '../ui/InlineTagsEdit';
+import { RecentSubmissions } from './RecentSubmissions';
 
 export function ActivityDetail() {
   const { id } = useParams<{ id: string }>();
@@ -129,9 +130,10 @@ export function ActivityDetail() {
         </div>
       </div>
 
-      {/* Log form */}
-      <div className="max-w-lg">
-        <LogEntryForm activity={activity} />
+      {/* Log form + recent submissions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start max-w-4xl">
+        <LogEntryForm key={activity.id} activity={activity} />
+        <RecentSubmissions activity={activity} logs={logs} />
       </div>
 
       {/* Current estimate */}

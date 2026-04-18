@@ -5,6 +5,7 @@ import { useQueueStore } from '../../stores/queueStore';
 import type { Activity, BestOfData } from '../../types/activity';
 import { parseDuration } from '../../lib/duration';
 import { DurationInput } from './DurationInput';
+import { DurationTimer } from './DurationTimer';
 import { CountInput } from './CountInput';
 
 interface LogEntryFormProps {
@@ -49,6 +50,33 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
   const current = nowParts();
   const dateDiffersFromNow = date !== current.date;
   const timeDiffersFromNow = time !== current.time;
+
+  const submitLog = async (value: number, bestOf: BestOfData) => {
+    try {
+      await createProgressLog({
+        activityId: activity.id,
+        date,
+        time,
+        value,
+        bestOf,
+      });
+      const { isOnline, pending } = useQueueStore.getState();
+      setFlash(!isOnline || pending > 0 ? 'queued' : 'saved');
+      setValueInput('');
+      setParsedDuration(null);
+      setBestOfAttempts('1');
+      setBestOfDurationInput('');
+      setParsedBestOfDuration(null);
+      valueInputRef.current?.focus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to log entry');
+    }
+  };
+
+  const handleTimerComplete = (seconds: number) => {
+    setError(null);
+    void submitLog(seconds, { type: 'attempts', count: 1 });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,22 +128,7 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
       return;
     }
 
-    try {
-      await createProgressLog({
-        activityId: activity.id,
-        date,
-        time,
-        value,
-        bestOf,
-      });
-      const { isOnline, pending } = useQueueStore.getState();
-      setFlash(!isOnline || pending > 0 ? 'queued' : 'saved');
-      setValueInput('');
-      setParsedDuration(null);
-      valueInputRef.current?.focus();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to log entry');
-    }
+    await submitLog(value, bestOf);
   };
 
   return (
@@ -127,15 +140,22 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
           {activity.measurementType === 'duration' ? 'Duration' : 'Count'}
         </label>
         {activity.measurementType === 'duration' ? (
-          <DurationInput
-            ref={valueInputRef}
-            value={valueInput}
-            onChange={setValueInput}
-            onParsed={setParsedDuration}
-            autoFocus
-            enterKeyHint="done"
-            large
-          />
+          <div className="space-y-3">
+            <DurationTimer onComplete={handleTimerComplete} />
+            <div className="flex items-center gap-2 text-xs text-gray-400 uppercase tracking-wide">
+              <span className="flex-1 border-t border-gray-200" />
+              <span>or enter manually</span>
+              <span className="flex-1 border-t border-gray-200" />
+            </div>
+            <DurationInput
+              ref={valueInputRef}
+              value={valueInput}
+              onChange={setValueInput}
+              onParsed={setParsedDuration}
+              enterKeyHint="done"
+              large
+            />
+          </div>
         ) : (
           <CountInput
             ref={valueInputRef}
