@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useChartConfigStore } from '../../stores/chartConfigStore';
 import { LAYERS } from '../../constants/statistics';
 
@@ -34,6 +35,12 @@ export function ChartControls() {
     setCutoffThresholdPct,
   } = useChartConfigStore();
 
+  // Dragging the kernel slider triggers an expensive Bayesian recompute on
+  // every tick. Keep the thumb/label driven by a local draft and only commit
+  // to the store on release.
+  const [kernelDraft, setKernelDraft] = useState(kernelStdDevDays);
+  useEffect(() => { setKernelDraft(kernelStdDevDays); }, [kernelStdDevDays]);
+
   return (
     <div className="space-y-3">
       {/* Layer toggles */}
@@ -68,12 +75,14 @@ export function ChartControls() {
             min={0}
             max={KERNEL_SLIDER_STEPS}
             step={1}
-            value={daysToSlider(kernelStdDevDays)}
-            onChange={(e) => setKernelStdDevDays(sliderToDays(Number(e.target.value)))}
+            value={daysToSlider(kernelDraft)}
+            onChange={(e) => setKernelDraft(sliderToDays(Number(e.target.value)))}
+            onPointerUp={() => setKernelStdDevDays(kernelDraft)}
+            onKeyUp={() => setKernelStdDevDays(kernelDraft)}
             className="flex-1 min-w-0"
           />
           <span className="text-xs text-gray-600 w-12 text-right tabular-nums shrink-0">
-            {formatKernelWidth(kernelStdDevDays)}
+            {formatKernelWidth(kernelDraft)}
           </span>
         </div>
 

@@ -43,7 +43,7 @@ export async function createSheetsProvider(
           .slice(1)
           .filter((row) => row.some((cell) => cell))
           .map((row) => {
-            const actId = row[activityIdCol] ?? '';
+            const actId = String(row[activityIdCol] ?? '');
             const mt = mtByActivityId.get(actId) ?? 'count';
             return rowToProgressLog(row, colMap, mt);
           });

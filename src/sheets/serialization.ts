@@ -1,10 +1,22 @@
 import type { Activity, LogEntry, MeasurementType } from '../types/activity';
+import type { SheetCell } from './client';
 import { parseDuration, formatDurationForSheet } from '../lib/duration';
 
-export function buildColumnMap(headerRow: string[]): Map<string, number> {
+function asString(cell: SheetCell | undefined): string {
+  return cell == null ? '' : String(cell);
+}
+
+function asNumber(cell: SheetCell | undefined): number | null {
+  if (typeof cell === 'number' && Number.isFinite(cell)) return cell;
+  if (cell == null || cell === '') return null;
+  const n = parseInt(String(cell), 10);
+  return Number.isNaN(n) ? null : n;
+}
+
+export function buildColumnMap(headerRow: SheetCell[]): Map<string, number> {
   const map = new Map<string, number>();
   headerRow.forEach((header, index) => {
-    map.set(header.trim().toLowerCase(), index);
+    map.set(asString(header).trim().toLowerCase(), index);
   });
   return map;
 }
@@ -13,28 +25,28 @@ export function buildColumnMap(headerRow: string[]): Map<string, number> {
 
 export const ACTIVITY_HEADERS = ['id', 'name', 'description', 'tags', 'measurementType', 'typicalAttemptDuration'];
 
-export function activityToRow(a: Activity): string[] {
+export function activityToRow(a: Activity): SheetCell[] {
   return [
     a.id,
     a.name,
     a.description,
     a.tags.join(', '),
     a.measurementType,
-    a.typicalAttemptDuration != null ? String(a.typicalAttemptDuration) : '',
+    a.typicalAttemptDuration != null ? a.typicalAttemptDuration : '',
   ];
 }
 
-export function rowToActivity(row: string[], colMap: Map<string, number>): Activity {
-  const get = (key: string) => row[colMap.get(key) ?? -1] ?? '';
-  const tadStr = get('typicalattemptduration');
-  const tad = tadStr ? parseInt(tadStr, 10) : undefined;
+export function rowToActivity(row: SheetCell[], colMap: Map<string, number>): Activity {
+  const get = (key: string) => row[colMap.get(key) ?? -1];
+  const tad = asNumber(get('typicalattemptduration'));
+  const tagsStr = asString(get('tags'));
   return {
-    id: get('id'),
-    name: get('name'),
-    description: get('description'),
-    tags: get('tags') ? get('tags').split(',').map(s => s.trim()).filter(Boolean) : [],
-    measurementType: (get('measurementtype') as MeasurementType) || 'count',
-    ...(tad != null && !isNaN(tad) ? { typicalAttemptDuration: tad } : {}),
+    id: asString(get('id')),
+    name: asString(get('name')),
+    description: asString(get('description')),
+    tags: tagsStr ? tagsStr.split(',').map(s => s.trim()).filter(Boolean) : [],
+    measurementType: (asString(get('measurementtype')) as MeasurementType) || 'count',
+    ...(tad != null ? { typicalAttemptDuration: tad } : {}),
   };
 }
 
@@ -42,38 +54,38 @@ export function rowToActivity(row: string[], colMap: Map<string, number>): Activ
 
 export const PROGRESS_HEADERS = ['activityId', 'date', 'time', 'value', 'bestOf'];
 
-export function progressLogToRow(log: LogEntry, measurementType: MeasurementType): string[] {
-  const valueStr = measurementType === 'duration'
+export function progressLogToRow(log: LogEntry, measurementType: MeasurementType): SheetCell[] {
+  const valueCell: SheetCell = measurementType === 'duration'
     ? formatDurationForSheet(log.value)
-    : String(log.value);
+    : log.value;
 
   return [
     log.activityId,
     log.date,
     log.time,
-    valueStr,
-    String(log.bestOf),
+    valueCell,
+    log.bestOf,
   ];
 }
 
 export function rowToProgressLog(
-  row: string[],
+  row: SheetCell[],
   colMap: Map<string, number>,
   measurementType: MeasurementType
 ): LogEntry {
-  const get = (key: string) => row[colMap.get(key) ?? -1] ?? '';
-  const rawValue = get('value') || '0';
+  const get = (key: string) => row[colMap.get(key) ?? -1];
+  const rawValue = get('value');
   const value = measurementType === 'duration'
-    ? (parseDuration(rawValue) ?? 0)
-    : parseInt(rawValue, 10) || 0;
+    ? (parseDuration(asString(rawValue)) ?? 0)
+    : (asNumber(rawValue) ?? 0);
 
-  const rawBestOf = parseInt(get('bestof'), 10);
-  const bestOf = !isNaN(rawBestOf) && rawBestOf > 0 ? rawBestOf : 1;
+  const parsedBestOf = asNumber(get('bestof'));
+  const bestOf = parsedBestOf != null && parsedBestOf > 0 ? parsedBestOf : 1;
 
   return {
-    activityId: get('activityid'),
-    date: get('date'),
-    time: get('time'),
+    activityId: asString(get('activityid')),
+    date: asString(get('date')),
+    time: asString(get('time')),
     value,
     bestOf,
   };

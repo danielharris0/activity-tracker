@@ -12,10 +12,12 @@ export class SheetsApiError extends Error {
   }
 }
 
+export type SheetCell = string | number;
+
 export interface SheetsClient {
-  getValues(range: string): Promise<string[][]>;
-  appendValues(range: string, values: string[][]): Promise<void>;
-  updateValues(range: string, values: string[][]): Promise<void>;
+  getValues(range: string): Promise<SheetCell[][]>;
+  appendValues(range: string, values: SheetCell[][]): Promise<void>;
+  updateValues(range: string, values: SheetCell[][]): Promise<void>;
   deleteRow(sheetName: string, sheetId: number, rowIndex: number): Promise<void>;
   getSheetProperties(): Promise<Array<{ title: string; sheetId: number }>>;
   addSheet(title: string): Promise<number>;
@@ -48,13 +50,13 @@ export function createSheetsClient(
   }
 
   return {
-    async getValues(range: string): Promise<string[][]> {
-      const url = `${baseUrl}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`;
-      const data = (await request(url)) as { values?: string[][] };
+    async getValues(range: string): Promise<SheetCell[][]> {
+      const url = `${baseUrl}/values/${encodeURIComponent(range)}?valueRenderOption=UNFORMATTED_VALUE`;
+      const data = (await request(url)) as { values?: SheetCell[][] };
       return data.values ?? [];
     },
 
-    async appendValues(range: string, values: string[][]): Promise<void> {
+    async appendValues(range: string, values: SheetCell[][]): Promise<void> {
       const url = `${baseUrl}/values/${encodeURIComponent(range)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
       await request(url, {
         method: 'POST',
@@ -62,7 +64,7 @@ export function createSheetsClient(
       });
     },
 
-    async updateValues(range: string, values: string[][]): Promise<void> {
+    async updateValues(range: string, values: SheetCell[][]): Promise<void> {
       const url = `${baseUrl}/values/${encodeURIComponent(range)}?valueInputOption=RAW`;
       await request(url, {
         method: 'PUT',
