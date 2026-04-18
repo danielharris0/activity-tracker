@@ -1,9 +1,5 @@
 export type MeasurementType = 'count' | 'duration';
 
-export type BestOfData =
-  | { type: 'attempts'; count: number }
-  | { type: 'duration'; seconds: number; typicalAttemptDuration?: number };
-
 export interface Activity {
   id: string;
   name: string;
@@ -18,5 +14,5 @@ export interface LogEntry {
   date: string;       // "YYYY-MM-DD"
   time: string;       // "HH:mm"
   value: number;      // integer for count, total seconds for duration
-  bestOf: BestOfData;
+  bestOf: number;     // number of attempts (>= 1)
 }

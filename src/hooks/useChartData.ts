@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { LogEntry, Activity } from '../types/activity';
+import type { LogEntry } from '../types/activity';
 import type { ChartLayerType, BayesianParams } from '../types/statistics';
 import type { BayesianChartPoint } from '../types/chart';
 import { prepareObservations, computeBayesianEstimates, generateEvalTimestamps, entryTimestamp } from '../lib/bayesian';
@@ -20,16 +20,12 @@ const EVAL_OVERSCAN = 0.5;
 
 export function useChartData(
   entries: LogEntry[],
-  activity: Activity,
   enabledLayers: Set<ChartLayerType>,
   params: BayesianParams,
   window: { startMs: number; endMs: number },
 ): BayesianChartPoint[] {
   const estimates = useMemo(() => {
-    const observations = prepareObservations(
-      entries,
-      activity.typicalAttemptDuration,
-    );
+    const observations = prepareObservations(entries);
 
     const span = window.endMs - window.startMs;
     const overscan = span * EVAL_OVERSCAN;
@@ -38,7 +34,7 @@ export function useChartData(
       endMs: window.endMs + overscan,
     });
     return computeBayesianEstimates(observations, params, evalTimestamps);
-  }, [entries, activity.typicalAttemptDuration, params, window.startMs, window.endMs]);
+  }, [entries, params, window.startMs, window.endMs]);
 
   const chartData = useMemo(() => {
     if (entries.length === 0) return [];

@@ -1,4 +1,4 @@
-import type { Activity, LogEntry, MeasurementType, BestOfData } from '../types/activity';
+import type { Activity, LogEntry, MeasurementType } from '../types/activity';
 import { parseDuration, formatDurationForSheet } from '../lib/duration';
 
 export function buildColumnMap(headerRow: string[]): Map<string, number> {
@@ -40,28 +40,19 @@ export function rowToActivity(row: string[], colMap: Map<string, number>): Activ
 
 // --- Progress logs ---
 
-export const PROGRESS_HEADERS = ['activityId', 'date', 'time', 'value', 'bestOfType', 'bestOfValue', 'bestOfTypicalDuration'];
+export const PROGRESS_HEADERS = ['activityId', 'date', 'time', 'value', 'bestOf'];
 
 export function progressLogToRow(log: LogEntry, measurementType: MeasurementType): string[] {
   const valueStr = measurementType === 'duration'
     ? formatDurationForSheet(log.value)
     : String(log.value);
 
-  const bestOfType = log.bestOf.type;
-  const bestOfValue = String(log.bestOf.type === 'attempts' ? log.bestOf.count : log.bestOf.seconds);
-  const bestOfTypicalDuration =
-    log.bestOf.type === 'duration' && log.bestOf.typicalAttemptDuration != null
-      ? String(log.bestOf.typicalAttemptDuration)
-      : '';
-
   return [
     log.activityId,
     log.date,
     log.time,
     valueStr,
-    bestOfType,
-    bestOfValue,
-    bestOfTypicalDuration,
+    String(log.bestOf),
   ];
 }
 
@@ -76,24 +67,8 @@ export function rowToProgressLog(
     ? (parseDuration(rawValue) ?? 0)
     : parseInt(rawValue, 10) || 0;
 
-  let bestOf: BestOfData = { type: 'attempts', count: 1 };
-  const boType = get('bestoftype');
-  const boValue = get('bestofvalue');
-  if (boType === 'attempts' && boValue) {
-    const count = parseInt(boValue, 10);
-    if (!isNaN(count) && count > 0) bestOf = { type: 'attempts', count };
-  } else if (boType === 'duration' && boValue) {
-    const seconds = parseInt(boValue, 10);
-    if (!isNaN(seconds) && seconds > 0) {
-      const boTypicalDur = get('bestoftypicalduration');
-      const typicalSecs = boTypicalDur ? parseInt(boTypicalDur, 10) : undefined;
-      bestOf = {
-        type: 'duration',
-        seconds,
-        ...(typicalSecs && !isNaN(typicalSecs) ? { typicalAttemptDuration: typicalSecs } : {}),
-      };
-    }
-  }
+  const rawBestOf = parseInt(get('bestof'), 10);
+  const bestOf = !isNaN(rawBestOf) && rawBestOf > 0 ? rawBestOf : 1;
 
   return {
     activityId: get('activityid'),

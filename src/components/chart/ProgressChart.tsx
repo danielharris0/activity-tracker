@@ -77,7 +77,7 @@ export function ProgressChart({ logs, activity }: ProgressChartProps) {
     cutoffThresholdPct,
   }), [kernelStdDevDays, cutoffThresholdPct]);
 
-  const chartData = useChartData(logs, activity, enabledLayers, params, baseWindow);
+  const chartData = useChartData(logs, enabledLayers, params, baseWindow);
 
   const showDebugTable = useChartConfigStore(s => s.showDebugTable);
   const toggleDebugTable = useChartConfigStore(s => s.toggleDebugTable);
@@ -87,9 +87,9 @@ export function ProgressChart({ logs, activity }: ProgressChartProps) {
   // Observation timestamps are now eval timestamps, so no snapping needed.
   const debugData = useMemo(() => {
     if (!showDebugTable || debugTimestamp == null) return null;
-    const observations = prepareObservations(logs, activity.typicalAttemptDuration);
+    const observations = prepareObservations(logs);
     return computeBayesianDebugAtTimestamp(observations, params, debugTimestamp);
-  }, [showDebugTable, debugTimestamp, logs, activity.typicalAttemptDuration, params]);
+  }, [showDebugTable, debugTimestamp, logs, params]);
 
   return (
     <div className="space-y-4">

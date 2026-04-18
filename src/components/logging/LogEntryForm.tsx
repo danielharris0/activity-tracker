@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { useDataStore } from '../../stores/dataStore';
 import { useQueueStore } from '../../stores/queueStore';
-import type { Activity, BestOfData } from '../../types/activity';
+import type { Activity } from '../../types/activity';
 import { parseDuration } from '../../lib/duration';
 import { DurationInput } from './DurationInput';
 import { DurationTimer } from './DurationTimer';
@@ -51,7 +51,7 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
   const dateDiffersFromNow = date !== current.date;
   const timeDiffersFromNow = time !== current.time;
 
-  const submitLog = async (value: number, bestOf: BestOfData) => {
+  const submitLog = async (value: number, bestOf: number) => {
     try {
       await createProgressLog({
         activityId: activity.id,
@@ -75,7 +75,7 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
 
   const handleTimerComplete = (seconds: number) => {
     setError(null);
-    void submitLog(seconds, { type: 'attempts', count: 1 });
+    void submitLog(seconds, 1);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -99,30 +99,28 @@ export function LogEntryForm({ activity }: LogEntryFormProps) {
       value = num;
     }
 
-    let bestOf: BestOfData;
+    let bestOf: number;
     if (hasAttempts) {
       const count = parseInt(bestOfAttempts, 10);
       if (isNaN(count) || count < 1) {
         setError('Please enter a valid number of attempts (1 or more)');
         return;
       }
-      bestOf = { type: 'attempts', count };
+      bestOf = count;
     } else if (hasDuration) {
       const seconds = parsedBestOfDuration ?? parseDuration(bestOfDurationInput);
       if (seconds === null || seconds <= 0) {
         setError('Please enter a valid session duration');
         return;
       }
-      if (!activity.typicalAttemptDuration) {
-        const typicalSecs = parsedInlineTypicalDuration ?? parseDuration(inlineTypicalDuration);
-        if (!typicalSecs || typicalSecs <= 0) {
-          setError('Please enter a typical attempt duration to convert session time to attempts');
-          return;
-        }
-        bestOf = { type: 'duration', seconds, typicalAttemptDuration: typicalSecs };
-      } else {
-        bestOf = { type: 'duration', seconds };
+      const typical = activity.typicalAttemptDuration
+        ?? parsedInlineTypicalDuration
+        ?? parseDuration(inlineTypicalDuration);
+      if (!typical || typical <= 0) {
+        setError('Please enter a typical attempt duration to convert session time to attempts');
+        return;
       }
+      bestOf = Math.max(1, Math.round(seconds / typical));
     } else {
       setError('Please enter either a number of attempts or a session duration');
       return;

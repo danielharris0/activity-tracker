@@ -28,11 +28,11 @@ export function CurrentEstimateIndicators({ logs, activity }: Props) {
 
   const nowEstimate = useMemo(() => {
     if (logs.length === 0) return null;
-    const observations = prepareObservations(logs, activity.typicalAttemptDuration);
+    const observations = prepareObservations(logs);
     const [est] = computeBayesianEstimates(observations, params, [nowAnchor]);
     if (!est || Number.isNaN(est.mean) || Number.isNaN(est.stddev)) return null;
     return { mean: est.mean, stddev: est.stddev };
-  }, [logs, activity.typicalAttemptDuration, params, nowAnchor]);
+  }, [logs, params, nowAnchor]);
 
   return (
     <div className="grid grid-cols-2 gap-6">

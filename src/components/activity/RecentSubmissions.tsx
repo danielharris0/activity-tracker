@@ -1,16 +1,9 @@
-import type { Activity, BestOfData, LogEntry } from '../../types/activity';
+import type { Activity, LogEntry } from '../../types/activity';
 import { formatDuration } from '../../lib/duration';
 
 interface RecentSubmissionsProps {
   activity: Activity;
   logs: LogEntry[];
-}
-
-function formatBestOf(bestOf: BestOfData): string {
-  if (bestOf.type === 'attempts') {
-    return `best of ${bestOf.count}`;
-  }
-  return `best of ${formatDuration(bestOf.seconds)}`;
 }
 
 export function RecentSubmissions({ activity, logs }: RecentSubmissionsProps) {
@@ -34,7 +27,7 @@ export function RecentSubmissions({ activity, logs }: RecentSubmissionsProps) {
               className="flex items-center justify-between py-2 text-sm"
             >
               <span className="font-medium text-gray-900">{formatValue(log.value)}</span>
-              <span className="text-xs text-gray-500">{formatBestOf(log.bestOf)}</span>
+              <span className="text-xs text-gray-500">best of {log.bestOf}</span>
             </li>
           ))}
         </ul>

@@ -28,15 +28,13 @@ The app expects (or creates) two tabs. Column order matters: rows are appended p
 
 ### Tab: `Progress`
 
-| Column                     | Notes                                                             |
-| -------------------------- | ----------------------------------------------------------------- |
-| `activityId`               | foreign key into `Activities.id`                                  |
-| `date`                     | `YYYY-MM-DD`                                                      |
-| `time`                     | `HH:mm`                                                           |
-| `value`                    | integer for `count`; `HH:mm:ss` for `duration`                    |
-| `bestOfType`               | `attempts` or `duration` (required)                               |
-| `bestOfValue`              | integer: attempt count, or total seconds of the session           |
-| `bestOfTypicalDuration`    | seconds; only set when `bestOfType=duration` and activity has none |
+| Column       | Notes                                          |
+| ------------ | ---------------------------------------------- |
+| `activityId` | foreign key into `Activities.id`               |
+| `date`       | `YYYY-MM-DD`                                   |
+| `time`       | `HH:mm`                                        |
+| `value`      | integer for `count`; `HH:mm:ss` for `duration` |
+| `bestOf`     | integer ≥ 1: number of attempts the `value` is the best of. If a session duration is entered at log time, it is converted to an attempt count via `max(1, round(seconds / activity.typicalAttemptDuration))` before being stored. |
 
 All writes use `valueInputOption: RAW`. Progress rows can be edited directly in the sheet.
 

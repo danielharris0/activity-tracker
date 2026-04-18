@@ -64,31 +64,14 @@ export function computeKernelAtPoint(
   return { relevantIndices, cutoffDist, variance };
 }
 
-export function prepareObservations(
-  entries: LogEntry[],
-  typicalAttemptDuration: number | undefined,
-): Observation[] {
+export function prepareObservations(entries: LogEntry[]): Observation[] {
   const observations: Observation[] = [];
 
   for (const entry of entries) {
-    let effectiveN: number;
-
-    if (entry.bestOf.type === 'attempts') {
-      effectiveN = Math.max(1, entry.bestOf.count);
-    } else {
-      // duration-based best-of: prefer per-entry override, then activity-level
-      const tad = entry.bestOf.typicalAttemptDuration ?? typicalAttemptDuration;
-      if (tad && tad > 0) {
-        effectiveN = Math.max(1, Math.floor(entry.bestOf.seconds / tad));
-      } else {
-        effectiveN = 1; // can't convert without typical duration
-      }
-    }
-
     observations.push({
       timestamp: entryTimestamp(entry),
       value: entry.value,
-      effectiveN,
+      effectiveN: Math.max(1, entry.bestOf),
     });
   }
 
